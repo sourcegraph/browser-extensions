@@ -1,21 +1,13 @@
 import { DiffPart, JumpURLFetcher } from '@sourcegraph/codeintellify'
-import { Observable, of, OperatorFunction, throwError as error } from 'rxjs'
+import { isErrorLike } from '@sourcegraph/codeintellify/lib/errors'
+import { InitializeResult } from 'cxp/lib/protocol'
+import { HoverMerged } from 'cxp/lib/types/hover'
+import { Observable, of } from 'rxjs'
 import { ajax, AjaxResponse } from 'rxjs/ajax'
 import { catchError, map, tap } from 'rxjs/operators'
-import { Definition, Hover } from 'vscode-languageserver-types'
-import { DidOpenTextDocumentParams, InitializeResult, ServerCapabilities } from 'vscode-languageserver/lib/main'
-import {
-    AbsoluteRepo,
-    AbsoluteRepoFilePosition,
-    AbsoluteRepoLanguageFile,
-    FileSpec,
-    makeRepoURI,
-    parseRepoURI,
-    PositionSpec,
-    RepoSpec,
-    ResolvedRevSpec,
-    RevSpec,
-} from '../repo'
+import { Definition, TextDocumentIdentifier } from 'vscode-languageserver-types'
+import { ServerCapabilities, TextDocumentPositionParams } from 'vscode-languageserver/lib/main'
+import { AbsoluteRepoFile, AbsoluteRepoFilePosition, AbsoluteRepoLanguageFile, parseRepoURI } from '../repo'
 import {
     getModeFromPath,
     isPrivateRepository,
@@ -26,13 +18,9 @@ import {
 } from '../util/context'
 import { memoizeObservable } from '../util/memoize'
 import { toAbsoluteBlobURL } from '../util/url'
+import { CXP_CONTROLLER } from './cxp'
 import { normalizeAjaxError } from './errors'
 import { getHeaders } from './headers'
-import {
-    fetchDefinition as fetchDefinition2,
-    fetchHover as fetchHover2,
-    fetchServerCapabilities as fetchServerCapabilities2,
-} from './lsp2'
 
 export interface LSPRequest {
     method: string
@@ -42,97 +30,40 @@ export interface LSPRequest {
 /** LSP proxy error code for unsupported modes */
 export const EMODENOTFOUND = -32000
 
-export function isEmptyHover(hover: Hover | null): boolean {
+export function isEmptyHover(hover: HoverMerged | null): boolean {
     return !hover || !hover.contents || (Array.isArray(hover.contents) && hover.contents.length === 0)
 }
 
-function wrapLSP(req: LSPRequest, ctx: AbsoluteRepo, path: string): any[] {
+type ResponseMessages = { 0: { result: InitializeResult } } & any[]
+
+function wrapLSP(reqs: LSPRequest[], ctx: AbsoluteRepoFile): any[] {
+    const modeFromPath = getModeFromPath(ctx.filePath)
+    const mode = modeFromPath && supportedModes.has(modeFromPath) ? modeFromPath : undefined
+    if (!mode) {
+        throw new Error('Unsupported mode ' + modeFromPath + ' for file ' + ctx.filePath)
+    }
+
     return [
         {
-            id: 0,
             method: 'initialize',
             params: {
                 rootUri: `git://${ctx.repoPath}?${ctx.commitID}`,
-                initializationOptions: { mode: `${getModeFromPath(path)}` },
+                initializationOptions: { mode },
             },
         },
-        {
-            id: 1,
-            ...req,
-        },
-        {
-            id: 2,
-            method: 'shutdown',
-        },
-        {
-            // id not included on 'exit' requests
-            method: 'exit',
-        },
-    ]
+        ...reqs,
+        { method: 'shutdown' },
+        { method: 'exit' },
+    ].map((obj, id) => (obj.method !== 'exit' ? { ...obj, id } : obj))
 }
 
-/**
- * Inspects a response from LSP Proxy and throws an exception if the response
- * has an error. This is intended to be used in rxjs: pipe(...throwIfError)
- */
-const extractLSPResponse: OperatorFunction<AjaxResponse, any> = source =>
-    source.pipe(
-        tap(ajaxResponse => {
-            // Workaround for https://github.com/ReactiveX/rxjs/issues/3606
-            if (ajaxResponse.status === 0) {
-                throw Object.assign(new Error('Ajax status 0'), ajaxResponse)
-            }
-        }),
-        catchError(err => {
-            normalizeAjaxError(err)
-            throw err
-        }),
-        map<AjaxResponse, any[]>(({ response }) => response),
-        tap(lspResponses => {
-            for (const lspResponse of lspResponses) {
-                if (lspResponse && lspResponse.error) {
-                    throw Object.assign(new Error(lspResponse.error.message), lspResponse.error, {
-                        responses: lspResponses,
-                    })
-                }
-            }
-        }),
-        map(lspResponses => lspResponses[1] && lspResponses[1].result)
-    )
+const sendLSPRequest = (method: string, params: any, ctx: AbsoluteRepoFile): Observable<any> => {
+    const url = repoUrlCache[ctx.repoPath] || sourcegraphUrl
 
-export const fetchHover = memoizeObservable((pos: AbsoluteRepoFilePosition): Observable<Hover | null> => {
-    const mode = getModeFromPath(pos.filePath)
-    if (!mode || !supportedModes.has(mode)) {
-        return of({ contents: [] })
-    }
+    const body = wrapLSP([{ method, params }], ctx)
 
-    if (useCXP) {
-        return fetchHover2({
-            ...(pos as Pick<typeof pos, Exclude<keyof typeof pos, 'language' | 'referencesMode'>>),
-            mode,
-        })
-    }
-
-    const body = wrapLSP(
-        {
-            method: 'textDocument/hover',
-            params: {
-                textDocument: {
-                    uri: `git://${pos.repoPath}?${pos.commitID}#${pos.filePath}`,
-                },
-                position: {
-                    character: pos.position.character! - 1,
-                    line: pos.position.line - 1,
-                },
-            },
-        },
-        pos,
-        pos.filePath
-    )
-
-    const url = repoUrlCache[pos.repoPath] || sourcegraphUrl
-    if (!url) {
-        throw new Error('Error fetching hover: No URL found.')
+    if (isErrorLike(body)) {
+        throw body
     }
     if (!canFetchForURL(url)) {
         return of(null)
@@ -140,63 +71,66 @@ export const fetchHover = memoizeObservable((pos: AbsoluteRepoFilePosition): Obs
 
     return ajax({
         method: 'POST',
-        url: `${url}/.api/xlang/textDocument/hover`,
+        url: `${url}/.api/xlang/${method}`,
         headers: getHeaders(),
         crossDomain: true,
         withCredentials: true,
         body: JSON.stringify(body),
         async: true,
-    }).pipe(extractLSPResponse)
-}, makeRepoURI)
+    }).pipe(
+        // Workaround for https://github.com/ReactiveX/rxjs/issues/3606
+        tap(response => {
+            if (response.status === 0) {
+                throw Object.assign(new Error('Ajax status 0'), response)
+            }
+        }),
+        catchError<AjaxResponse, never>(err => {
+            normalizeAjaxError(err)
+            throw err
+        }),
+        map(({ response }) => response),
+        map((results: ResponseMessages) => {
+            for (const result of results) {
+                if (result && result.error) {
+                    throw Object.assign(new Error(result.error.message), result.error, { responses: results })
+                }
+            }
 
-const fetchDefinition = memoizeObservable((pos: AbsoluteRepoFilePosition): Observable<Definition> => {
-    const mode = getModeFromPath(pos.filePath)
-    if (!mode || !supportedModes.has(mode)) {
-        return of([])
-    }
-
-    if (useCXP) {
-        return fetchDefinition2({
-            ...(pos as Pick<typeof pos, Exclude<keyof typeof pos, 'language' | 'referencesMode'>>),
-            mode,
+            return results[1] && (results[1].result as any)
         })
-    }
-
-    const body = wrapLSP(
-        {
-            method: 'textDocument/definition',
-            params: {
-                textDocument: {
-                    uri: `git://${pos.repoPath}?${pos.commitID}#${pos.filePath}`,
-                },
-                position: {
-                    character: pos.position.character! - 1,
-                    line: pos.position.line - 1,
-                },
-            },
-        },
-        pos,
-        pos.filePath
     )
+}
 
-    const url = repoUrlCache[pos.repoPath] || sourcegraphUrl
-    if (!url) {
-        throw new Error('Error fetching definition: No URL found.')
-    }
-    if (!canFetchForURL(url)) {
-        return of([])
-    }
+export const toTextDocumentIdentifier = (pos: AbsoluteRepoFile): TextDocumentIdentifier => ({
+    uri: `git://${pos.repoPath}?${pos.commitID}#${pos.filePath}`,
+})
 
-    return ajax({
-        method: 'POST',
-        url: `${url}/.api/xlang/textDocument/definition`,
-        headers: getHeaders(),
-        crossDomain: true,
-        withCredentials: true,
-        body: JSON.stringify(body),
-        async: true,
-    }).pipe(extractLSPResponse)
-}, makeRepoURI)
+const toTextDocumentPositionParams = (pos: AbsoluteRepoFilePosition): TextDocumentPositionParams => ({
+    textDocument: toTextDocumentIdentifier(pos),
+    position: {
+        character: pos.position.character! - 1,
+        line: pos.position.line - 1,
+    },
+})
+
+export const fetchHover = (pos: AbsoluteRepoFilePosition): Observable<HoverMerged | null> =>
+    (useCXP
+        ? arg =>
+              CXP_CONTROLLER.registries.textDocumentHover
+                  .getHover(toTextDocumentPositionParams(arg))
+                  .pipe(map(hover => (hover === null ? HoverMerged.from([]) : hover)))
+        : memoizeObservable((ctx: AbsoluteRepoFilePosition) =>
+              sendLSPRequest('textDocument/hover', toTextDocumentPositionParams(ctx), ctx)
+          ))(pos)
+
+export const fetchDefinition = (pos: AbsoluteRepoFilePosition): Observable<Definition> =>
+    (useCXP
+        ? arg => CXP_CONTROLLER.registries.textDocumentDefinition.getLocation(toTextDocumentPositionParams(arg))
+        : memoizeObservable<AbsoluteRepoFilePosition, Definition>((ctx: AbsoluteRepoFilePosition) =>
+              sendLSPRequest('textDocument/definition', toTextDocumentPositionParams(ctx), ctx).pipe(
+                  map(definition => definition as any)
+              )
+          ))(pos)
 
 export function fetchJumpURL(pos: AbsoluteRepoFilePosition): Observable<string | null> {
     return fetchDefinition(pos).pipe(
@@ -214,7 +148,7 @@ export function fetchJumpURL(pos: AbsoluteRepoFilePosition): Observable<string |
     )
 }
 
-export type JumpURLLocation = RepoSpec & RevSpec & ResolvedRevSpec & FileSpec & PositionSpec & { part?: DiffPart }
+export type JumpURLLocation = AbsoluteRepoFilePosition & { rev: string } & { part?: DiffPart }
 export function createJumpURLFetcher(buildURL: (pos: JumpURLLocation) => string): JumpURLFetcher {
     return ({ line, character, part, commitID, repoPath, ...rest }) =>
         fetchDefinition({ ...rest, commitID, repoPath, position: { line, character } }).pipe(
@@ -247,41 +181,15 @@ export function createJumpURLFetcher(buildURL: (pos: JumpURLLocation) => string)
 const unsupportedModes = new Set<string>()
 
 export const fetchServerCapabilities = (pos: AbsoluteRepoLanguageFile): Observable<ServerCapabilities | undefined> => {
-    // Check if mode is known to not be supported
-    const mode = getModeFromPath(pos.filePath)
-    if (!mode || unsupportedModes.has(mode)) {
-        return error(Object.assign(new Error('Language not supported'), { code: EMODENOTFOUND }))
-    }
-
-    if (useCXP) {
-        return fetchServerCapabilities2({
-            ...(pos as Pick<typeof pos, Exclude<keyof typeof pos, 'language' | 'filePath'>>),
-            mode,
-        })
-    }
-
-    const body = wrapLSP(
-        {
-            method: 'textDocument/didOpen',
-            params: {
-                textDocument: {
-                    uri: `git://${pos.repoPath}?${pos.commitID}#${pos.filePath}`,
-                },
-            } as DidOpenTextDocumentParams,
-        },
-        pos,
-        pos.filePath
-    )
+    // We're only interested in the InitializeResult, so we don't pass any requests.
+    const body = wrapLSP([], pos)
     const url = repoUrlCache[pos.repoPath] || sourcegraphUrl
-    if (!url) {
-        throw new Error('Error fetching server capabilities. No URL found.')
-    }
     if (!canFetchForURL(url)) {
         return of(undefined)
     }
     return ajax({
         method: 'POST',
-        url: `${url}/.api/xlang/textDocument/didOpen`,
+        url: `${url}/.api/xlang/initialize`,
         headers: getHeaders(),
         crossDomain: true,
         withCredentials: true,
@@ -302,7 +210,7 @@ export const fetchServerCapabilities = (pos: AbsoluteRepoLanguageFile): Observab
             for (const result of results) {
                 if (result && result.error) {
                     if (result.error.code === EMODENOTFOUND) {
-                        unsupportedModes.add(mode)
+                        unsupportedModes.add(pos.language)
                     }
                     throw Object.assign(new Error(result.error.message), result.error)
                 }

@@ -134,8 +134,13 @@ function shouldResponseTriggerRetryOrError(response: any): boolean {
  * @param variables A key/value object with variable values
  * @return Observable That emits the result or errors if the HTTP request failed
  */
-export function queryGraphQL(ctx: RequestContext, query: string, variables: any = {}): Observable<QueryResult> {
-    return requestGraphQL(ctx, query, variables, serverUrls) as Observable<QueryResult>
+export function queryGraphQL(
+    ctx: RequestContext,
+    query: string,
+    variables: any = {},
+    urls: string[] = serverUrls
+): Observable<QueryResult> {
+    return requestGraphQL(ctx, query, variables, urls) as Observable<QueryResult>
 }
 
 /**

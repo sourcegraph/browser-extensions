@@ -25,6 +25,7 @@ interface State {
     extensionDisabled: boolean
     canShowDisableExtension: boolean
     useCXP: boolean
+    clientSettings: string
 }
 
 // Make safari not be abnoxious <angry face>
@@ -55,6 +56,7 @@ export class OptionsPage extends React.Component<{}, State> {
             extensionDisabled: false,
             canShowDisableExtension: false,
             useCXP: false,
+            clientSettings: '',
         }
     }
 
@@ -71,6 +73,7 @@ export class OptionsPage extends React.Component<{}, State> {
                     extensionDisabled: items.disableExtension,
                     canShowDisableExtension: !!extensionInfo && !extensionInfo.mayDisable,
                     useCXP: items.useCXP,
+                    clientSettings: items.clientSettings,
                 })
             })
         })
@@ -248,7 +251,7 @@ export class OptionsPage extends React.Component<{}, State> {
                                     type="checkbox"
                                     {...safariInputAttributes as any}
                                 />{' '}
-                                <div className="options__input-label">Use new LSP client implementation</div>
+                                <div className="options__input-label">Enable CXP</div>
                             </Label>
                         </FormGroup>
                         <FormGroup check={true}>

@@ -4,7 +4,9 @@ import '../../app/util/polyfill'
 
 import { without } from 'lodash'
 
+import { ajax } from 'rxjs/ajax'
 import initializeCli from '../../app/cli'
+import { ExtensionPlatform } from '../../app/components/CXPCommands'
 import { setServerUrls, setSourcegraphUrl } from '../../app/util/context'
 import * as browserAction from '../../extension/browserAction'
 import * as omnibox from '../../extension/omnibox'
@@ -297,3 +299,174 @@ function setDefaultBrowserAction(): void {
     browserAction.setBadgeText({ text: '' })
     browserAction.setPopup({ popup: 'options.html?popup=true' })
 }
+
+/**
+ * Fetches JavaScript from a URL and runs it in a web worker.
+ */
+function spawnWebWorkerFromURL(url: string): Promise<Worker> {
+    return ajax({
+        url,
+        crossDomain: true,
+        responseType: 'blob',
+    })
+        .toPromise()
+        .then(response => new Worker(window.URL.createObjectURL(response.response)))
+}
+
+/**
+ * Connects a function to a port, request/response style.
+ */
+const responding = (respond: (request: any) => Promise<any>): ((port: chrome.runtime.Port) => void) => port => {
+    port.onMessage.addListener(request => {
+        respond(request)
+            .then(response => port.postMessage({ portName: response }))
+            .catch(error => {
+                port.postMessage({ error })
+            })
+    })
+}
+
+// TODO(chris): handle case where the bundle 404s https://github.com/sourcegraph/cxp-js/issues/13
+
+/**
+ * Connects a port and worker by forwarding messages from one to the other and
+ * vice versa.
+ */
+const connectPortAndWorker = (port: chrome.runtime.Port, worker: Worker) => {
+    worker.addEventListener('message', m => {
+        port.postMessage(m.data)
+    })
+    port.onMessage.addListener(m => {
+        worker.postMessage(m)
+    })
+    port.onDisconnect.addListener(() => worker.terminate())
+}
+
+/**
+ * Connects a port and WebSocket by forwarding messages from one to the other and
+ * vice versa.
+ */
+const connectPortAndWebSocket = (port: chrome.runtime.Port, webSocket: WebSocket) => {
+    webSocket.addEventListener('error', console.log)
+    webSocket.addEventListener('message', m => {
+        console.log('WebSocket -> port', m)
+        port.postMessage(JSON.parse(m.data))
+    })
+    port.onMessage.addListener(m => {
+        console.log('port -> WebSocket', m)
+        webSocket.send(JSON.stringify(m))
+    })
+    // TODO(chris): test termination of: [worker, websocket, socket.io, port]
+    port.onDisconnect.addListener(() => webSocket.close())
+    webSocket.addEventListener('close', () => port.disconnect())
+}
+
+/**
+ * Connects a port and socket.io client by forwarding messages from one to the other and
+ * vice versa.
+ */
+const connectPortAndSocketIOClient = (port: chrome.runtime.Port, socket: SocketIOClient.Socket) => {
+    socket.on('message', m => {
+        port.postMessage(m)
+    })
+    // TODO(chris): forward errors
+    // TODO(chris): try sharing extensions across pages
+    // try https://sourcegraph.sgdev.org/github.com/sourcegraph/sourcegraph/-/blob/web/src/cxp/webWorker.ts
+    // try sending a shutdown message or something
+    // somehow avoid zombies... so many things can go wrong
+    port.onMessage.addListener(m => {
+        socket.emit('message', m)
+    })
+    port.onDisconnect.addListener(() => socket.disconnect())
+    socket.on('disconnect', () => port.disconnect())
+}
+
+/**
+ * All communication between CXP clients in content scripts and CXP servers
+ * running in web workers (JS bundles) in the background script goes through
+ * these handlers, which connect each browser extension port (not to be confused
+ * with TCP ports) to a web socket or web worker (depending on the platform
+ * type).
+ */
+const handlerByName: { [name: string]: ((port: chrome.runtime.Port) => void) } = {
+    // TODO(chris): handle the race condition where two content scripts request the same
+    // extension ID in quick succession. This function will overwrite one of
+    // them, which I think would leak a connection or something.
+    CONTROL: responding(
+        ({
+            extensionID,
+            platform,
+        }: {
+            extensionID: string
+            platform: ExtensionPlatform
+        }): Promise<string | undefined> => {
+            if (extensionID in handlerByName) {
+                return Promise.resolve(extensionID)
+            } else {
+                const portName = 'EXTENSION_' + extensionID
+                switch (platform.type) {
+                    case 'bundle':
+                        return spawnWebWorkerFromURL(platform.url).then(worker => {
+                            handlerByName[portName] = port => connectPortAndWorker(port, worker)
+                            return portName
+                        })
+                    // TODO(chris): use async/await
+                    // TODO(chris): rename to socket.io
+                    case 'websocket':
+                        // TODO(chris): split this into 2 cases once `socket.io` is a
+                        // supported platform type
+                        const interpretWEBSOCKETAsSOCKETIO = false
+                        if (interpretWEBSOCKETAsSOCKETIO) {
+                            return new Promise((resolve, reject) => {
+                                const socket = io.connect(platform.url)
+                                socket.on('connect', () => {
+                                    handlerByName[portName] = port => connectPortAndSocketIOClient(port, socket)
+                                    resolve(portName)
+                                })
+                                socket.on('error', error => console.error(error))
+                            })
+                        } else {
+                            return new Promise((resolve, reject) => {
+                                const webSocket = new WebSocket(platform.url)
+                                webSocket.addEventListener('open', () => {
+                                    handlerByName[portName] = port => connectPortAndWebSocket(port, webSocket)
+                                    resolve(portName)
+                                })
+                            })
+                        }
+                    default:
+                        console.error(
+                            `Cannot connect to extension ${extensionID} of type ${
+                                platform.type
+                            }. Must be either bundle or websocket.`
+                        )
+                        return Promise.resolve(undefined)
+                }
+            }
+        }
+    ),
+}
+
+// This is the one and only callback that runs when a content script connects to
+// the background script. Content scripts that want a CXP connection can request
+// for the background script to spawn a web worker or connect to a socket.io
+// server. The content scripts always connect to the `CONTROL` port first and
+// pass the extension ID and URL (to the JS bundle or socket.io server). The
+// `CONTROL` port then spawns the web worker or connects to the socket.io server
+// and responds with a the name of a new port to which the content script can
+// connect in order to speak CXP.
+chrome.runtime.onConnect.addListener(port => {
+    // This is safe (i.e. `port.name` is guaranteed to be in `handlerByName`)
+    // because content scripts are supposed to only connect to ports returned by
+    // the `CONTROL` port (and the `CONTROL` port itself).
+    if (port.name in handlerByName) {
+        handlerByName[port.name](port)
+    } else {
+        console.warn(
+            'Encountered a bug in CXP connection handling! There is no handler for port ' +
+                port.name +
+                '. Available ports: ' +
+                JSON.stringify(Object.keys(handlerByName))
+        )
+    }
+})

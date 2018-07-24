@@ -1,8 +1,17 @@
 import * as React from 'react'
 
+import { Subscription } from 'rxjs'
 import storage from '../../extension/storage'
+import { CXP_CONTROLLER } from '../backend/cxp'
 import { setServerUrls } from '../util/context'
 import { CodeIntelStatusIndicator } from './CodeIntelStatusIndicator'
+import {
+    ContributableMenu,
+    ContributedActions,
+    Contributions,
+    CXPControllerProps,
+    ExtensionsProps,
+} from './CXPCommands'
 import { OpenOnSourcegraph } from './OpenOnSourcegraph'
 
 export interface ButtonProps {
@@ -11,7 +20,7 @@ export interface ButtonProps {
     iconStyle?: React.CSSProperties
 }
 
-interface CodeViewToolbarProps {
+interface CodeViewToolbarProps extends ExtensionsProps, CXPControllerProps {
     repoPath: string
     filePath: string
 
@@ -25,18 +34,46 @@ interface CodeViewToolbarProps {
     buttonProps: ButtonProps
 }
 
-export class CodeViewToolbar extends React.PureComponent<CodeViewToolbarProps> {
+interface CodeViewToolbarState {
+    contributions: Contributions
+}
+
+export class CodeViewToolbar extends React.Component<CodeViewToolbarProps, CodeViewToolbarState> {
+    private subscriptions = new Subscription()
+
+    constructor(props: CodeViewToolbarProps) {
+        super(props)
+        this.state = {
+            contributions: {},
+        }
+    }
+
+    public componentWillUnmount(): void {
+        this.subscriptions.unsubscribe()
+    }
+
     public componentDidMount(): void {
         storage.onChanged(items => {
             if (items.serverUrls && items.serverUrls.newValue) {
                 setServerUrls(items.serverUrls.newValue)
             }
         })
+
+        this.subscriptions.add(
+            CXP_CONTROLLER.registries.contribution.contributions.subscribe(contributions => {
+                this.setState(prevState => ({ contributions }))
+            })
+        )
     }
 
     public render(): JSX.Element | null {
         return (
             <div style={{ display: 'inline-flex', verticalAlign: 'middle', alignItems: 'center' }}>
+                <ContributedActions
+                    menu={ContributableMenu.EditorTitle}
+                    contributions={this.state.contributions}
+                    cxpController={this.props.cxpController}
+                />
                 <CodeIntelStatusIndicator
                     key="code-intel-status"
                     userIsSiteAdmin={false}

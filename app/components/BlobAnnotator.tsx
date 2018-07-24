@@ -45,6 +45,9 @@ import {
 import { eventLogger, getPathExtension } from '../util/context'
 import { parseHash } from '../util/url'
 import { fetchBlobContentLines } from '../repo/backend'
+import { ContributedActions, ContributableMenu, Extensions, Contributions } from './CXPCommands'
+import { Controller } from 'cxp/lib/environment/controller'
+import { CXPExtensionWithManifest, CXP_CONTROLLER } from '../backend/cxp'
 
 export interface ButtonProps {
     className: string
@@ -75,15 +78,18 @@ interface Props extends AbsoluteRepoFile, Partial<PositionSpec> {
     isSplitDiff: boolean
     isBase: boolean
     buttonProps: ButtonProps
+    extensions?: Extensions
+    cxpController?: Controller<CXPExtensionWithManifest>
 }
 
 interface State {
     fixedTooltip?: TooltipData
     showOpenFileCTA?: boolean
+    contributions: Contributions
 }
 
 export class BlobAnnotator extends React.Component<Props, State> {
-    public state: State = {}
+    public state: State = { contributions: {} }
     public fileExtension: string
     public isDelta: boolean
     private fixedTooltip = new Subject<Props>()
@@ -139,6 +145,12 @@ export class BlobAnnotator extends React.Component<Props, State> {
 
         document.addEventListener('sourcegraph:dismissTooltip', this.onTooltipDismissed)
         window.addEventListener('hashchange', this.handleHashChange)
+
+        this.subscriptions.add(
+            CXP_CONTROLLER.registries.contribution.contributions.subscribe(contributions => {
+                this.setState(prevState => ({ contributions }))
+            })
+        )
     }
 
     public componentWillUnmount(): void {
@@ -191,6 +203,14 @@ export class BlobAnnotator extends React.Component<Props, State> {
 
         return (
             <div style={{ display: 'inline-flex', verticalAlign: 'middle', alignItems: 'center' }}>
+                {this.props.extensions &&
+                    this.props.cxpController && (
+                        <ContributedActions
+                            menu={ContributableMenu.EditorTitle}
+                            contributions={this.state.contributions}
+                            cxpController={this.props.cxpController}
+                        />
+                    )}
                 {showStatus && (
                     <CodeIntelStatusIndicator
                         key="code-intel-status"

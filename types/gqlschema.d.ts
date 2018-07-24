@@ -77,14 +77,35 @@ declare namespace GQL {
         organizations: IOrgConnection
 
         /**
-         * The current site settings.
+         * Lists discussion threads.
          */
-        currentSiteSettings: ISettings | null
+        discussionThreads: IDiscussionThreadConnection
 
         /**
-         * The configuration.
+         * Lists discussion comments.
          */
-        configuration: IConfigurationCascade
+        discussionComments: IDiscussionCommentConnection
+
+        /**
+         * Renders Markdown to HTML. The returned HTML is already sanitized and
+         * escaped and thus is always safe to render.
+         */
+        renderMarkdown: string
+
+        /**
+         * Looks up an instance of a type that implements ConfigurationSubject.
+         */
+        configurationSubject: ConfigurationSubject | null
+
+        /**
+         * Looks up an instance of a type that implements ExtensionConfigurationSubject.
+         */
+        extensionConfigurationSubject: ExtensionConfigurationSubject | null
+
+        /**
+         * The configuration for the viewer.
+         */
+        viewerConfiguration: IConfigurationCascade
 
         /**
          * Runs a search.
@@ -107,17 +128,6 @@ declare namespace GQL {
         repoGroups: IRepoGroup[]
 
         /**
-         * Looks up an organization by ID.
-         * @deprecated use Query.node instead
-         */
-        org: IOrg
-
-        /**
-         * Looks up a shared item by ULID. This is an experimental feature.
-         */
-        sharedItem: ISharedItem | null
-
-        /**
          * The current site.
          */
         site: ISite
@@ -126,6 +136,16 @@ declare namespace GQL {
          * Retrieve responses to surveys.
          */
         surveyResponses: ISurveyResponseConnection
+
+        /**
+         * The extension registry.
+         */
+        extensionRegistry: IExtensionRegistry
+
+        /**
+         * A list of extensions that are configured for the viewer.
+         */
+        viewerConfiguredExtensions: IConfiguredExtensionConnection
     }
 
     export interface INodeOnQueryArguments {
@@ -271,20 +291,64 @@ declare namespace GQL {
         query?: string | null
     }
 
+    export interface IDiscussionThreadsOnQueryArguments {
+        /**
+         * Returns the first n threads from the list.
+         */
+        first?: number | null
+
+        /**
+         * When present, lists only the thread with this ID.
+         */
+        threadID?: ID | null
+
+        /**
+         * When present, lists only the threads created by this author.
+         */
+        authorUserID?: ID | null
+
+        /**
+         * When present, lists only the threads whose target is a repository with this ID.
+         */
+        targetRepositoryID?: ID | null
+
+        /**
+         * When present, lists only the threads whose target is a repository with this file path.
+         */
+        targetRepositoryPath?: string | null
+    }
+
+    export interface IDiscussionCommentsOnQueryArguments {
+        /**
+         * Returns the first n comments from the list.
+         */
+        first?: number | null
+
+        /**
+         * When present, lists only the comments created by this author.
+         */
+        authorUserID?: ID | null
+    }
+
+    export interface IRenderMarkdownOnQueryArguments {
+        markdown: string
+        options?: IMarkdownOptions | null
+    }
+
+    export interface IConfigurationSubjectOnQueryArguments {
+        id: ID
+    }
+
+    export interface IExtensionConfigurationSubjectOnQueryArguments {
+        id: ID
+    }
+
     export interface ISearchOnQueryArguments {
         /**
          * The search query (such as "foo" or "repo:myrepo foo").
          * @default
          */
         query?: string | null
-    }
-
-    export interface IOrgOnQueryArguments {
-        id: ID
-    }
-
-    export interface ISharedItemOnQueryArguments {
-        ulid: string
     }
 
     export interface ISurveyResponsesOnQueryArguments {
@@ -294,6 +358,32 @@ declare namespace GQL {
         first?: number | null
     }
 
+    export interface IViewerConfiguredExtensionsOnQueryArguments {
+        /**
+         * Returns the first n extensions from the list.
+         */
+        first?: number | null
+
+        /**
+         * Include enabled extensions.
+         * @default true
+         */
+        enabled?: boolean | null
+
+        /**
+         * Include disabled extensions.
+         * @default false
+         */
+        disabled?: boolean | null
+
+        /**
+         * Include entries that do not refer to a valid registry extension (e.g., entries whose extension ID doesn't
+         * match any known registry extensions).
+         * @default false
+         */
+        invalid?: boolean | null
+    }
+
     /**
      * An object with an ID.
      */
@@ -301,8 +391,9 @@ declare namespace GQL {
         | IRepository
         | IGitCommit
         | IUser
+        | IRegistryExtension
         | IOrg
-        | IThread
+        | IOrganizationInvitation
         | IAccessToken
         | IExternalAccount
         | IPackage
@@ -379,7 +470,7 @@ declare namespace GQL {
         updatedAt: string | null
 
         /**
-         * Returns information about the given commit in the repository.
+         * Returns information about the given commit in the repository, or null if no commit exists with the given rev.
          */
         commit: IGitCommit | null
 
@@ -497,7 +588,17 @@ declare namespace GQL {
     }
 
     export interface ICommitOnRepositoryArguments {
+        /**
+         * The Git revision specifier (revspec) for the commit.
+         */
         rev: string
+
+        /**
+         * Optional input revspec used to construct non-canonical URLs and other "friendly" field values. Used by
+         * clients that must ensure consistency of revision resolution within a session/request (so they use full
+         * SHAs) but also preserve the user input rev (for user friendliness).
+         */
+        inputRevspec?: string | null
     }
 
     export interface IGitRefsOnRepositoryArguments {
@@ -681,9 +782,14 @@ declare namespace GQL {
         parents: IGitCommit[]
 
         /**
-         * The URL to this commit.
+         * The URL to this commit (using the input revision specifier, which may not be immutable).
          */
         url: string
+
+        /**
+         * The canonical URL to this commit (using an immutable revision specifier).
+         */
+        canonicalURL: string
 
         /**
          * The URLs to this commit on its repository's external services.
@@ -691,14 +797,21 @@ declare namespace GQL {
         externalURLs: IExternalLink[]
 
         /**
-         * Lists the Git tree as of this commit.
+         * The Git tree in this commit at the given path.
          */
-        tree: ITree | null
+        tree: IGitTree | null
 
         /**
-         * Retrieves a Git blob (file) as of this commit.
+         * The Git blob in this commit at the given path.
          */
-        file: IFile | null
+        blob: IGitBlob | null
+
+        /**
+         *  The file at the given path for this commit.
+         *
+         *  See "File" documentation for the difference between this field and the "blob" field.
+         */
+        file: File2 | null
 
         /**
          * Lists the programming languages present in the tree at this commit.
@@ -735,14 +848,23 @@ declare namespace GQL {
 
     export interface ITreeOnGitCommitArguments {
         /**
+         * The path of the tree.
          * @default
          */
         path?: string | null
 
         /**
+         *  Whether to recurse into sub-trees. If true, it overrides the value of the "recursive" parameter on all of
+         *  GitTree's fields.
+         *
+         *  DEPRECATED: Use the "recursive" parameter on GitTree's fields instead.
          * @default false
          */
         recursive?: boolean | null
+    }
+
+    export interface IBlobOnGitCommitArguments {
+        path: string
     }
 
     export interface IFileOnGitCommitArguments {
@@ -901,6 +1023,11 @@ declare namespace GQL {
         url: string
 
         /**
+         * The URL to the user's settings.
+         */
+        settingsURL: string
+
+        /**
          * The date when the user account was created on Sourcegraph.
          */
         createdAt: string
@@ -925,21 +1052,27 @@ declare namespace GQL {
         latestSettings: ISettings | null
 
         /**
+         * The configuration cascade including this subject and all applicable subjects whose configuration is lower
+         * precedence than this subject.
+         */
+        configurationCascade: IConfigurationCascade
+
+        /**
          * The organizations that this user is a member of.
          */
-        orgs: IOrg[]
+        organizations: IOrgConnection
 
         /**
          * This user's organization memberships.
          */
-        orgMemberships: IOrgMembership[]
+        organizationMemberships: IOrganizationMembershipConnection
 
         /**
-         *  The internal tags associated with the user. This is an internal site management feature.
+         *  Tags associated with the user. These are used for internal site management and feature selection.
          *
          *  Only the user and site admins can access this field.
          */
-        tags: IUserTag[]
+        tags: string[]
 
         /**
          *  The user's usage activity on Sourcegraph.
@@ -956,7 +1089,7 @@ declare namespace GQL {
         emails: IUserEmail[]
 
         /**
-         *  The users' access tokens (which grant to the holder the privileges of the user). This consists
+         *  The user's access tokens (which grant to the holder the privileges of the user). This consists
          *  of all access tokens whose subject is this user.
          *
          *  Only the user and site admins can access this field.
@@ -966,7 +1099,7 @@ declare namespace GQL {
         /**
          * A list of external accounts that are associated with the user.
          */
-        externalAccounts: IExternalAccount[]
+        externalAccounts: IExternalAccountConnection
 
         /**
          *  The user's currently active session.
@@ -981,6 +1114,23 @@ declare namespace GQL {
          * site admins have admin privileges on all users.
          */
         viewerCanAdminister: boolean
+
+        /**
+         *  The user's survey responses.
+         *
+         *  Only the user and site admins can access this field.
+         */
+        surveyResponses: ISurveyResponse[]
+
+        /**
+         * A list of extensions published by this user in the extension registry.
+         */
+        registryExtensions: IRegistryExtensionConnection
+
+        /**
+         * A list of extensions that are configured for this user.
+         */
+        configuredExtensions: IConfiguredExtensionConnection
     }
 
     export interface IAccessTokensOnUserArguments {
@@ -988,6 +1138,51 @@ declare namespace GQL {
          * Returns the first n access tokens from the list.
          */
         first?: number | null
+    }
+
+    export interface IExternalAccountsOnUserArguments {
+        /**
+         * Returns the first n external accounts from the list.
+         */
+        first?: number | null
+    }
+
+    export interface IRegistryExtensionsOnUserArguments {
+        /**
+         * Returns the first n extensions from the list.
+         */
+        first?: number | null
+
+        /**
+         * Returns only extensions matching the query.
+         */
+        query?: string | null
+    }
+
+    export interface IConfiguredExtensionsOnUserArguments {
+        /**
+         * Returns the first n extensions from the list.
+         */
+        first?: number | null
+
+        /**
+         * Include enabled extensions.
+         * @default true
+         */
+        enabled?: boolean | null
+
+        /**
+         * Include disabled extensions.
+         * @default false
+         */
+        disabled?: boolean | null
+
+        /**
+         * Include entries that do not refer to a valid registry extension (e.g., entries whose extension ID doesn't
+         * match any known registry extensions).
+         * @default false
+         */
+        invalid?: boolean | null
     }
 
     /**
@@ -1010,6 +1205,22 @@ declare namespace GQL {
          * The latest settings.
          */
         latestSettings: ISettings | null
+
+        /**
+         * The URL to the settings.
+         */
+        settingsURL: string
+
+        /**
+         * Whether the viewer can modify the subject's configuration.
+         */
+        viewerCanAdminister: boolean
+
+        /**
+         * The configuration cascade including this subject and all applicable subjects whose configuration is lower
+         * precedence than this subject.
+         */
+        configurationCascade: IConfigurationCascade
     }
 
     /**
@@ -1068,6 +1279,320 @@ declare namespace GQL {
     }
 
     /**
+     * The configurations for all of the relevant configuration subjects, plus the merged
+     * configuration.
+     */
+    export interface IConfigurationCascade {
+        __typename: 'ConfigurationCascade'
+
+        /**
+         * The default settings, which are applied first and the lowest priority behind
+         * all configuration subjects' settings.
+         */
+        defaults: IConfiguration | null
+
+        /**
+         * The configurations for all of the subjects that are applied for the currently authenticated user. For
+         * example, a user in 2 organizations would have the following configuration subjects: org 1, org 2, and the
+         * user.
+         */
+        subjects: ConfigurationSubject[]
+
+        /**
+         * The effective configuration, merged from all of the subjects.
+         */
+        merged: IConfiguration
+    }
+
+    /**
+     * An extension configuration subject is something that can have an extension configured for it.
+     */
+    export type ExtensionConfigurationSubject = IUser | IOrg | ISite
+
+    /**
+     * An extension configuration subject is something that can have an extension configured for it.
+     */
+    export interface IExtensionConfigurationSubject {
+        __typename: 'ExtensionConfigurationSubject'
+
+        /**
+         * A list of extensions that are configured for this subject.
+         */
+        configuredExtensions: IConfiguredExtensionConnection
+
+        /**
+         * The URL to the settings.
+         */
+        settingsURL: string
+
+        /**
+         * Whether the viewer can modify the subject's configuration.
+         */
+        viewerCanAdminister: boolean
+    }
+
+    export interface IConfiguredExtensionsOnExtensionConfigurationSubjectArguments {
+        /**
+         * Returns the first n extensions from the list.
+         */
+        first?: number | null
+
+        /**
+         * Include enabled extensions.
+         * @default true
+         */
+        enabled?: boolean | null
+
+        /**
+         * Include disabled extensions.
+         * @default false
+         */
+        disabled?: boolean | null
+
+        /**
+         * Include entries that do not refer to a valid registry extension (e.g., entries whose extension ID doesn't
+         * match any known registry extensions).
+         * @default false
+         */
+        invalid?: boolean | null
+    }
+
+    /**
+     * A list of configured extensions.
+     */
+    export interface IConfiguredExtensionConnection {
+        __typename: 'ConfiguredExtensionConnection'
+
+        /**
+         * A list of configured extensions.
+         */
+        nodes: IConfiguredExtension[]
+
+        /**
+         * The total count of configured extensions in the connection. This total count may be larger than the number of
+         * nodes in this object when the result is paginated.
+         */
+        totalCount: number
+
+        /**
+         * Pagination information.
+         */
+        pageInfo: IPageInfo
+
+        /**
+         * The URL to this list, or null if none exists.
+         */
+        url: string | null
+    }
+
+    /**
+     *  An extension's configuration for a specific configuration subject (e.g., a user).
+     *
+     *  A ConfiguredExtension is synthesized when a registry extension is configured in settings (e.g., when a user
+     *  enables an extension).
+     */
+    export interface IConfiguredExtension {
+        __typename: 'ConfiguredExtension'
+
+        /**
+         * The extension that is configured, or null if no extension is found with the extension ID in
+         * ConfiguredExtension.extensionID.
+         */
+        extension: IRegistryExtension | null
+
+        /**
+         * The extension ID of the configured extension. This field is set even if there is no extension found with the
+         * extension ID.
+         */
+        extensionID: string
+
+        /**
+         * The configuration subject for whom the extension is configured, or null if this extension is not configured
+         * (and the empty configuration is being used, such as when the extension is just being queried for
+         * capabilities).
+         */
+        subject: ConfigurationSubject | null
+
+        /**
+         * Whether the extension is enabled. A configured extension is disabled when the "disabled" property is true in
+         * its settings.
+         */
+        isEnabled: boolean
+
+        /**
+         * The extension's reported capabilities for the viewer, as a JSON-serialized string. The extension may return
+         * different values depending on the viewer's settings.
+         */
+        capabilities: any | null
+
+        /**
+         * The extension's reported contributions for the viewer, as a JSON-serialized string. The extension may return
+         * different values depending on the viewer's settings.
+         */
+        contributions: any | null
+
+        /**
+         * The merged settings for the extension (based on the the viewer's global, organization, and user settings).
+         */
+        mergedSettings: any | null
+    }
+
+    /**
+     * An extension's listing in the extension registry.
+     */
+    export interface IRegistryExtension {
+        __typename: 'RegistryExtension'
+
+        /**
+         * The unique, opaque, permanent ID of the extension. Do not display this ID to the user; display
+         * RegistryExtension.extensionID instead (it is friendlier and still unique, but it can be renamed).
+         */
+        id: ID
+
+        /**
+         * The UUID of the extension. This identifies the extension externally (along with the origin). The UUID maps
+         * 1-to-1 to RegistryExtension.id.
+         */
+        uuid: string
+
+        /**
+         * The publisher of the extension. If this extension is from a remote registry, the publisher may be null.
+         */
+        publisher: RegistryPublisher | null
+
+        /**
+         * The qualified, unique name that refers to this extension, consisting of the registry name (if non-default),
+         * publisher's name, and the extension's name, all joined by "/" (for example, "acme-corp/my-extension-name").
+         */
+        extensionID: string
+
+        /**
+         * The extension ID without the registry name.
+         */
+        extensionIDWithoutRegistry: string
+
+        /**
+         * The name of the extension (not including the publisher's name).
+         */
+        name: string
+
+        /**
+         * The extension manifest, or null if none is set.
+         */
+        manifest: IExtensionManifest | null
+
+        /**
+         * The date when this extension was created on the registry.
+         */
+        createdAt: string | null
+
+        /**
+         * The date when this extension was last updated on the registry.
+         */
+        updatedAt: string | null
+
+        /**
+         * The URL to the extension on this Sourcegraph site.
+         */
+        url: string
+
+        /**
+         * The URL to the extension on the extension registry where it lives (if this is a remote
+         * extension). If this extension is local, then this field's value is null.
+         */
+        remoteURL: string | null
+
+        /**
+         * The name of this extension's registry.
+         */
+        registryName: string
+
+        /**
+         * Whether the registry extension is published on this Sourcegraph site.
+         */
+        isLocal: boolean
+
+        /**
+         *  A list of configuration subjects whose settings configure this extension, without accounting for
+         *  configuration cascading.
+         *
+         *  Because this does not account for configuration cascading, only the direct subjects of settings will be
+         *  included in the list. For example, if an organization enables the extension in the organizations settings,
+         *  only the organization will be included in this list, but not any of its members (unless they explicitly also
+         *  enable the extension in their user settings).
+         */
+        extensionConfigurationSubjects: IExtensionConfigurationSubjectConnection
+
+        /**
+         *  A list of users for whom this extension is enabled, accounting for configuration cascading.
+         *
+         *  Because this accounts for configuration cascading, for example, a user who is a member of an organization
+         *  with the extension enabled will be included in the list (unless they explicitly disable the extension in
+         *  their user settings).
+         */
+        users: IUserConnection
+
+        /**
+         * Whether the viewer has this extension enabled in their settings.
+         */
+        viewerHasEnabled: boolean
+
+        /**
+         * Whether the viewer has admin privileges on this registry extension.
+         */
+        viewerCanAdminister: boolean
+
+        /**
+         * The configured form of this extension, using the configuration for the given configuration subject (or null
+         * to use empty configuration).
+         */
+        configuredExtension: IConfiguredExtension
+    }
+
+    export interface IExtensionConfigurationSubjectsOnRegistryExtensionArguments {
+        /**
+         * Returns the first n subjects from the list.
+         */
+        first?: number | null
+
+        /**
+         * Include users.
+         * @default false
+         */
+        users?: boolean | null
+
+        /**
+         * Only include subjects that are equal to or ancestors of the given subject. (For example, given a user's
+         * ID, only the following subjects would be returned: the user, all organizations of which they are a
+         * member, and global settings.)
+         */
+        subject?: ID | null
+
+        /**
+         * Equivalent to setting the subject parameter to the ID of the viewer, except that it also handles
+         * unauthenticated users.
+         * @default false
+         */
+        viewer?: boolean | null
+    }
+
+    export interface IUsersOnRegistryExtensionArguments {
+        /**
+         * Returns the first n users from the list.
+         */
+        first?: number | null
+    }
+
+    export interface IConfiguredExtensionOnRegistryExtensionArguments {
+        subject?: ID | null
+    }
+
+    /**
+     * A publisher of a registry extension.
+     */
+    export type RegistryPublisher = IUser | IOrg
+
+    /**
      * An organization, which is a group of users.
      */
     export interface IOrg {
@@ -1077,12 +1602,6 @@ declare namespace GQL {
          * The unique ID for the organization.
          */
         id: ID
-
-        /**
-         * The numeric unique ID for the organization.
-         * @deprecated use id instead
-         */
-        orgID: number
 
         /**
          * The organization's name. This is unique among all organizations on this Sourcegraph site.
@@ -1112,32 +1631,15 @@ declare namespace GQL {
         latestSettings: ISettings | null
 
         /**
-         *  The repositories associated with the organization. This is an experimental feature.
-         *
-         *  Only organization members and site admins can access this field.
+         * The configuration cascade including this subject and all applicable subjects whose configuration is lower
+         * precedence than this subject.
          */
-        repos: IOrgRepo[]
+        configurationCascade: IConfigurationCascade
 
         /**
-         *  Look up a repository associated with the organization. This is an experimental feature.
-         *
-         *  Only organization members and site admins can access this field.
+         * A pending invitation for the viewer to join this organization, if any.
          */
-        repo: IOrgRepo | null
-
-        /**
-         *  Threads associated with the organization. This is an experimental feature.
-         *
-         *  Only organization members and site admins can access this field.
-         */
-        threads: IThreadConnection
-
-        /**
-         *  The internal tags associated with the organization. This is an internal site management feature.
-         *
-         *  Only organization members and site admins can access this field.
-         */
-        tags: IOrgTag[]
+        viewerPendingInvitation: IOrganizationInvitation | null
 
         /**
          * Whether the viewer has admin privileges on this organization. Currently, all of an organization's members
@@ -1149,21 +1651,64 @@ declare namespace GQL {
          * Whether the viewer is a member of this organization.
          */
         viewerIsMember: boolean
-    }
 
-    export interface IRepoOnOrgArguments {
-        canonicalRemoteID: string
-    }
-
-    export interface IThreadsOnOrgArguments {
         /**
-         * DEPRECATED: use canonicalRemoteIDs instead.
+         * The URL to the organization.
          */
-        repoCanonicalRemoteID?: string | null
-        canonicalRemoteIDs: string[]
-        branch?: string | null
-        file?: string | null
-        limit?: number | null
+        url: string
+
+        /**
+         * The URL to the organization's settings.
+         */
+        settingsURL: string
+
+        /**
+         * A list of extensions published by this organization in the extension registry.
+         */
+        registryExtensions: IRegistryExtensionConnection
+
+        /**
+         * A list of extensions that are configured for this organization.
+         */
+        configuredExtensions: IConfiguredExtensionConnection
+    }
+
+    export interface IRegistryExtensionsOnOrgArguments {
+        /**
+         * Returns the first n extensions from the list.
+         */
+        first?: number | null
+
+        /**
+         * Returns only extensions matching the query.
+         */
+        query?: string | null
+    }
+
+    export interface IConfiguredExtensionsOnOrgArguments {
+        /**
+         * Returns the first n extensions from the list.
+         */
+        first?: number | null
+
+        /**
+         * Include enabled extensions.
+         * @default true
+         */
+        enabled?: boolean | null
+
+        /**
+         * Include disabled extensions.
+         * @default false
+         */
+        disabled?: boolean | null
+
+        /**
+         * Include entries that do not refer to a valid registry extension (e.g., entries whose extension ID doesn't
+         * match any known registry extensions).
+         * @default false
+         */
+        invalid?: boolean | null
     }
 
     /**
@@ -1185,343 +1730,243 @@ declare namespace GQL {
     }
 
     /**
-     * An organization repository.
+     * An invitation to join an organization as a member.
      */
-    export interface IOrgRepo {
-        __typename: 'OrgRepo'
+    export interface IOrganizationInvitation {
+        __typename: 'OrganizationInvitation'
 
         /**
-         * The ID.
+         * The ID of the invitation.
          */
-        id: number
+        id: ID
 
         /**
-         * The organization.
+         * The organization that the invitation is for.
          */
-        org: IOrg
+        organization: IOrg
 
         /**
-         * The canonical remote ID.
+         * The user who sent the invitation.
          */
-        canonicalRemoteID: string
+        sender: IUser
 
         /**
-         * The time when this was created.
+         * The user who received the invitation.
+         */
+        recipient: IUser
+
+        /**
+         * The date when this invitation was created.
          */
         createdAt: string
 
         /**
-         * The time when this was updated.
+         * The most recent date when a notification was sent to the recipient about this invitation.
          */
-        updatedAt: string
+        notifiedAt: string | null
 
         /**
-         * Gets the threads. This is an experimental feature.
+         * The date when this invitation was responded to by the recipient.
          */
-        threads: IThreadConnection
+        respondedAt: string | null
 
         /**
-         * The repository that this refers to, if the repository is available on the server. This is null
-         * for repositories that only exist for users locally (that they use with the editor) but that
-         * are not on the server.
+         * The recipient's response to this invitation, or no response (null).
          */
-        repository: IRepository | null
-    }
+        responseType: OrganizationInvitationResponseType | null
 
-    export interface IThreadsOnOrgRepoArguments {
-        file?: string | null
-        branch?: string | null
-        limit?: number | null
+        /**
+         * The URL where the recipient can respond to the invitation when pending, or null if not pending.
+         */
+        respondURL: string | null
+
+        /**
+         * The date when this invitation was revoked.
+         */
+        revokedAt: string | null
     }
 
     /**
-     * A list of threads.
+     * The recipient's possible responses to an invitation to join an organization as a member.
      */
-    export interface IThreadConnection {
-        __typename: 'ThreadConnection'
-
+    export enum OrganizationInvitationResponseType {
         /**
-         * A list of threads.
+         * The invitation was accepted by the recipient.
          */
-        nodes: IThread[]
+        ACCEPT = 'ACCEPT',
 
         /**
-         * The total count of threads in the connection. This total count may be larger
+         * The invitation was rejected by the recipient.
+         */
+        REJECT = 'REJECT',
+    }
+
+    /**
+     * A list of registry extensions.
+     */
+    export interface IRegistryExtensionConnection {
+        __typename: 'RegistryExtensionConnection'
+
+        /**
+         * A list of registry extensions.
+         */
+        nodes: IRegistryExtension[]
+
+        /**
+         * The total count of registry extensions in the connection. This total count may be larger than the number of
+         * nodes in this object when the result is paginated.
+         */
+        totalCount: number
+
+        /**
+         * Pagination information.
+         */
+        pageInfo: IPageInfo
+
+        /**
+         * The URL to this list, or null if none exists.
+         */
+        url: string | null
+
+        /**
+         *  Errors that occurred while communicating with remote registries to obtain the list of extensions.
+         *
+         *  In order to be able to return local extensions even when the remote registry is unreachable, errors are
+         *  recorded here instead of in the top-level GraphQL errors list.
+         */
+        error: string | null
+    }
+
+    /**
+     * Pagination information. See https://facebook.github.io/relay/graphql/connections.htm#sec-undefined.PageInfo.
+     */
+    export interface IPageInfo {
+        __typename: 'PageInfo'
+
+        /**
+         * Whether there is a next page of nodes in the connection.
+         */
+        hasNextPage: boolean
+    }
+
+    /**
+     * A description of the extension, how to run or access it, and when to activate it.
+     */
+    export interface IExtensionManifest {
+        __typename: 'ExtensionManifest'
+
+        /**
+         * The raw JSON contents of the manifest.
+         */
+        raw: string
+
+        /**
+         * The title specified in the manifest, if any.
+         */
+        title: string | null
+
+        /**
+         * The description specified in the manifest, if any.
+         */
+        description: string | null
+    }
+
+    /**
+     * A list of extension configuration subjects.
+     */
+    export interface IExtensionConfigurationSubjectConnection {
+        __typename: 'ExtensionConfigurationSubjectConnection'
+
+        /**
+         * A list of edges with information about the relationships between the extension and its subjects.
+         */
+        edges: IExtensionConfigurationSubjectEdge[]
+
+        /**
+         * A list of extension configuration subjects.
+         */
+        nodes: ExtensionConfigurationSubject[]
+
+        /**
+         * The total count of extension configuration subjects in the connection. This total count may be larger than
+         * the number of nodes in this object when the result is paginated.
+         */
+        totalCount: number
+    }
+
+    /**
+     * A relationship between an extension and a subject.
+     */
+    export interface IExtensionConfigurationSubjectEdge {
+        __typename: 'ExtensionConfigurationSubjectEdge'
+
+        /**
+         * The subject.
+         */
+        node: ExtensionConfigurationSubject
+
+        /**
+         * The extension.
+         */
+        extension: IRegistryExtension
+
+        /**
+         * Whether the subject's configuration (ignoring cascading) enables the extension.
+         */
+        isEnabled: boolean
+
+        /**
+         * The URL to the subject's configuration for the extension.
+         */
+        url: string
+    }
+
+    /**
+     * A list of organizations.
+     */
+    export interface IOrgConnection {
+        __typename: 'OrgConnection'
+
+        /**
+         * A list of organizations.
+         */
+        nodes: IOrg[]
+
+        /**
+         * The total count of organizations in the connection. This total count may be larger
          * than the number of nodes in this object when the result is paginated.
          */
         totalCount: number
     }
 
     /**
-     * Thread is a comment thread.
+     * A list of organization memberships.
      */
-    export interface IThread {
-        __typename: 'Thread'
+    export interface IOrganizationMembershipConnection {
+        __typename: 'OrganizationMembershipConnection'
 
         /**
-         * The unique ID.
+         * A list of organization memberships.
          */
-        id: ID
+        nodes: IOrganizationMembership[]
 
         /**
-         * The primary key from the database.
+         * The total count of organization memberships in the connection. This total count may be larger than the number
+         * of nodes in this object when the result is paginated.
          */
-        databaseID: number
-
-        /**
-         * The repository.
-         */
-        repo: IOrgRepo
-
-        /**
-         * The file.
-         * @deprecated use repoRevisionPath (or linesRevisionPath) instead
-         */
-        file: string
-
-        /**
-         * The relative path of the resource in the repository at repoRevision.
-         */
-        repoRevisionPath: string
-
-        /**
-         * The relative path of the resource in the repository at linesRevision.
-         */
-        linesRevisionPath: string
-
-        /**
-         * The branch.
-         */
-        branch: string | null
-
-        /**
-         * The commit ID of the repository at the time the thread was created.
-         */
-        repoRevision: string
-
-        /**
-         *  The commit ID from Git blame, at the time the thread was created.
-         *
-         *  The selection may be multiple lines, and the commit id is the
-         *  topologically most recent commit of the blame commit ids for the selected
-         *  lines.
-         *
-         *  For example, if you have a selection of lines that have blame revisions
-         *  (a, c, e, f), and assuming a history like::
-         *
-         *  	a <- b <- c <- d <- e <- f <- g <- h <- HEAD
-         *
-         *  Then lines_revision would be f, because all other blame revisions a, c, e
-         *  are reachable from f.
-         *
-         *  Or in lay terms: "What is the oldest revision that I could checkout and
-         *  still see the exact lines of code that I selected?".
-         */
-        linesRevision: string
-
-        /**
-         * The title.
-         */
-        title: string
-
-        /**
-         * The start line.
-         */
-        startLine: number
-
-        /**
-         * The end line.
-         */
-        endLine: number
-
-        /**
-         * The start character.
-         */
-        startCharacter: number
-
-        /**
-         * The end character.
-         */
-        endCharacter: number
-
-        /**
-         * The range length.
-         */
-        rangeLength: number
-
-        /**
-         * The time when this was created.
-         */
-        createdAt: string
-
-        /**
-         * The time when this was archived.
-         */
-        archivedAt: string | null
-
-        /**
-         * The author.
-         */
-        author: IUser
-
-        /**
-         * The lines.
-         */
-        lines: IThreadLines | null
-
-        /**
-         * The comments.
-         */
-        comments: IComment[]
-    }
-
-    /**
-     * Thread lines.
-     */
-    export interface IThreadLines {
-        __typename: 'ThreadLines'
-
-        /**
-         *  HTML context lines before 'html'.
-         *
-         *  It is sanitized already by the server, and thus is safe for rendering.
-         */
-        htmlBefore: string
-
-        /**
-         *  HTML lines that the user's selection was made on.
-         *
-         *  It is sanitized already by the server, and thus is safe for rendering.
-         */
-        html: string
-
-        /**
-         *  HTML context lines after 'html'.
-         *
-         *  It is sanitized already by the server, and thus is safe for rendering.
-         */
-        htmlAfter: string
-
-        /**
-         * Text context lines before 'text'.
-         */
-        textBefore: string
-
-        /**
-         * Text lines that the user's selection was made on.
-         */
-        text: string
-
-        /**
-         * Text context lines after 'text'.
-         */
-        textAfter: string
-
-        /**
-         * Byte offset into textLines where user selection began.
-         */
-        textSelectionRangeStart: number
-
-        /**
-         * Length in bytes of the user selection.
-         */
-        textSelectionRangeLength: number
-    }
-
-    export interface IHtmlBeforeOnThreadLinesArguments {
-        isLightTheme: boolean
-    }
-
-    export interface IHtmlOnThreadLinesArguments {
-        isLightTheme: boolean
-    }
-
-    export interface IHtmlAfterOnThreadLinesArguments {
-        isLightTheme: boolean
-    }
-
-    /**
-     * Comment is a comment in a thread.
-     */
-    export interface IComment {
-        __typename: 'Comment'
-
-        /**
-         * The unique ID.
-         */
-        id: ID
-
-        /**
-         * The primary key from the database.
-         */
-        databaseID: number
-
-        /**
-         * The title.
-         */
-        title: string
-
-        /**
-         * The contents.
-         */
-        contents: string
-
-        /**
-         *  The file rendered as rich HTML, or an empty string if it is not a supported
-         *  rich file type.
-         *
-         *  This HTML string is already escaped and thus is always safe to render.
-         */
-        richHTML: string
-
-        /**
-         * The time when his was created.
-         */
-        createdAt: string
-
-        /**
-         * The time when this was updated.
-         */
-        updatedAt: string
-
-        /**
-         * The author.
-         */
-        author: IUser
-    }
-
-    /**
-     * An organization tag.
-     */
-    export interface IOrgTag {
-        __typename: 'OrgTag'
-
-        /**
-         * The ID.
-         */
-        id: number
-
-        /**
-         * The name.
-         */
-        name: string
+        totalCount: number
     }
 
     /**
      * An organization membership.
      */
-    export interface IOrgMembership {
-        __typename: 'OrgMembership'
-
-        /**
-         * The ID.
-         */
-        id: number
+    export interface IOrganizationMembership {
+        __typename: 'OrganizationMembership'
 
         /**
          * The organization.
          */
-        org: IOrg
+        organization: IOrg
 
         /**
          * The user.
@@ -1537,23 +1982,6 @@ declare namespace GQL {
          * The time when this was updated.
          */
         updatedAt: string
-    }
-
-    /**
-     * A user tag.
-     */
-    export interface IUserTag {
-        __typename: 'UserTag'
-
-        /**
-         * The ID.
-         */
-        id: number
-
-        /**
-         * The name.
-         */
-        name: string
     }
 
     /**
@@ -1688,15 +2116,26 @@ declare namespace GQL {
     }
 
     /**
-     * Pagination information. See https://facebook.github.io/relay/graphql/connections.htm#sec-undefined.PageInfo.
+     * A list of external accounts.
      */
-    export interface IPageInfo {
-        __typename: 'PageInfo'
+    export interface IExternalAccountConnection {
+        __typename: 'ExternalAccountConnection'
 
         /**
-         * Whether there is a next page of nodes in the connection.
+         * A list of external accounts.
          */
-        hasNextPage: boolean
+        nodes: IExternalAccount[]
+
+        /**
+         * The total count of external accounts in the connection. This total count may be larger than the number of nodes
+         * in this object when the result is paginated.
+         */
+        totalCount: number
+
+        /**
+         * Pagination information.
+         */
+        pageInfo: IPageInfo
     }
 
     /**
@@ -1726,6 +2165,12 @@ declare namespace GQL {
         serviceID: string
 
         /**
+         * An identifier for the client of the external service where the external account resides. This distinguishes
+         * among multiple authentication providers that access the same service with different parameters.
+         */
+        clientID: string
+
+        /**
          * An identifier for the external account (typically equal to or derived from the ID on the external service).
          */
         accountID: string
@@ -1744,6 +2189,13 @@ declare namespace GQL {
          * A URL that, when visited, re-initiates the authentication process.
          */
         refreshURL: string | null
+
+        /**
+         *  Provider-specific data about the external account.
+         *
+         *  Only site admins may query this field.
+         */
+        accountData: any | null
     }
 
     /**
@@ -1756,6 +2208,48 @@ declare namespace GQL {
          * Whether the user can sign out of this session on Sourcegraph.
          */
         canSignOut: boolean
+    }
+
+    /**
+     * An individual response to a user satisfaction (NPS) survey.
+     */
+    export interface ISurveyResponse {
+        __typename: 'SurveyResponse'
+
+        /**
+         * The unique ID of the survey response
+         */
+        id: ID
+
+        /**
+         * The user who submitted the survey (if they were authenticated at the time).
+         */
+        user: IUser | null
+
+        /**
+         * The email that the user manually entered (if they were NOT authenticated at the time).
+         */
+        email: string | null
+
+        /**
+         * User's likelihood of recommending Sourcegraph to a friend, from 0-10.
+         */
+        score: number
+
+        /**
+         * The answer to "What is the most important reason for the score you gave".
+         */
+        reason: string | null
+
+        /**
+         * The answer to "What can Sourcegraph do to provide a better product"
+         */
+        better: string | null
+
+        /**
+         * The time when this response was created.
+         */
+        createdAt: string
     }
 
     /**
@@ -1777,48 +2271,23 @@ declare namespace GQL {
     }
 
     /**
-     * A tree.
+     * A Git tree in a repository.
      */
-    export interface ITree {
-        __typename: 'Tree'
+    export interface IGitTree {
+        __typename: 'GitTree'
 
         /**
-         * The directories.
-         */
-        directories: IDirectory[]
-
-        /**
-         * The files
-         */
-        files: IFile[]
-
-        /**
-         * Consists of directories plus files.
-         */
-        entries: TreeEntry[]
-
-        /**
-         *  FOR INTERNAL USE ONLY.
-         *
-         *  An optimized, raw encoding of this tree, used by the Sourcegraph frontend web application's file tree
-         *  component.
-         */
-        internalRaw: string
-    }
-
-    /**
-     * A directory.
-     */
-    export interface IDirectory {
-        __typename: 'Directory'
-
-        /**
-         * The full path (relative to the repository root) of this directory.
+         * The full path (relative to the root) of this tree.
          */
         path: string
 
         /**
-         * The base name (i.e., file name only) of this directory.
+         * Whether this tree is the root (top-level) tree.
+         */
+        isRoot: boolean
+
+        /**
+         * The base name (i.e., last path component only) of this tree.
          */
         name: string
 
@@ -1829,32 +2298,91 @@ declare namespace GQL {
         isDirectory: boolean
 
         /**
-         * The repository containing this directory.
+         * The Git commit containing this tree.
+         */
+        commit: IGitCommit
+
+        /**
+         * The repository containing this tree.
          */
         repository: IRepository
 
         /**
-         * The list of Git commits that touched this directory.
-         */
-        commits: IGitCommit[]
-
-        /**
-         * The URL to this directory.
+         * The URL to this tree (using the input revision specifier, which may not be immutable).
          */
         url: string
 
         /**
-         * The tree.
+         * The canonical URL to this tree (using an immutable revision specifier).
          */
-        tree: ITree
+        canonicalURL: string
 
         /**
-         * Symbols defined in this directory.
+         * The URLs to this tree on external services.
+         */
+        externalURLs: IExternalLink[]
+
+        /**
+         * A list of directories in this tree.
+         */
+        directories: IGitTree[]
+
+        /**
+         * A list of files in this tree.
+         */
+        files: IFile[]
+
+        /**
+         * A list of entries in this tree.
+         */
+        entries: TreeEntry[]
+
+        /**
+         * Symbols defined in this tree.
          */
         symbols: ISymbolConnection
     }
 
-    export interface ISymbolsOnDirectoryArguments {
+    export interface IDirectoriesOnGitTreeArguments {
+        /**
+         * Returns the first n files in the tree.
+         */
+        first?: number | null
+
+        /**
+         * Recurse into sub-trees.
+         * @default false
+         */
+        recursive?: boolean | null
+    }
+
+    export interface IFilesOnGitTreeArguments {
+        /**
+         * Returns the first n files in the tree.
+         */
+        first?: number | null
+
+        /**
+         * Recurse into sub-trees.
+         * @default false
+         */
+        recursive?: boolean | null
+    }
+
+    export interface IEntriesOnGitTreeArguments {
+        /**
+         * Returns the first n files in the tree.
+         */
+        first?: number | null
+
+        /**
+         * Recurse into sub-trees.
+         * @default false
+         */
+        recursive?: boolean | null
+    }
+
+    export interface ISymbolsOnGitTreeArguments {
         /**
          * Returns the first n symbols from the list.
          */
@@ -1869,7 +2397,7 @@ declare namespace GQL {
     /**
      * A file, directory, or other tree entry.
      */
-    export type TreeEntry = IDirectory | IFile
+    export type TreeEntry = IGitTree | IGitBlob
 
     /**
      * A file, directory, or other tree entry.
@@ -1893,19 +2421,19 @@ declare namespace GQL {
         isDirectory: boolean
 
         /**
-         * The repository containing this tree entry.
-         */
-        repository: IRepository
-
-        /**
-         * The list of Git commits that touched this tree entry.
-         */
-        commits: IGitCommit[]
-
-        /**
-         * The URL to this tree entry.
+         * The URL to this tree entry (using the input revision specifier, which may not be immutable).
          */
         url: string
+
+        /**
+         * The canonical URL to this tree entry (using an immutable revision specifier).
+         */
+        canonicalURL: string
+
+        /**
+         * The URLs to this tree entry on external services.
+         */
+        externalURLs: IExternalLink[]
 
         /**
          * Symbols defined in this file or directory.
@@ -1978,9 +2506,14 @@ declare namespace GQL {
         location: ILocation
 
         /**
-         * The URL of this symbol.
+         * The URL to this symbol (using the input revision specifier, which may not be immutable).
          */
         url: string
+
+        /**
+         * The canonical URL to this symbol (using an immutable revision specifier).
+         */
+        canonicalURL: string
     }
 
     /**
@@ -2026,7 +2559,7 @@ declare namespace GQL {
         /**
          * The file that this location refers to.
          */
-        resource: TreeEntry
+        resource: IGitBlob
 
         /**
          * The range inside the file that this location refers to.
@@ -2034,53 +2567,158 @@ declare namespace GQL {
         range: IRange | null
 
         /**
-         * The URL to this location.
+         * The URL to this location (using the input revision specifier, which may not be immutable).
          */
         url: string
+
+        /**
+         * The canonical URL to this location (using an immutable revision specifier).
+         */
+        canonicalURL: string
     }
 
     /**
-     * A range inside a file. The start position is inclusive, and the end position is exclusive.
+     * A Git blob in a repository.
      */
-    export interface IRange {
-        __typename: 'Range'
+    export interface IGitBlob {
+        __typename: 'GitBlob'
 
         /**
-         * The start position of the range (inclusive).
+         * The full path (relative to the repository root) of this blob.
          */
-        start: IPosition
+        path: string
 
         /**
-         * The end position of the range (exclusive).
+         * The base name (i.e., file name only) of this blob's path.
          */
-        end: IPosition
+        name: string
+
+        /**
+         * False because this is a blob (file), not a directory.
+         */
+        isDirectory: boolean
+
+        /**
+         * The content of this blob.
+         */
+        content: string
+
+        /**
+         * Whether or not it is binary.
+         */
+        binary: boolean
+
+        /**
+         *  The blob contents rendered as rich HTML, or an empty string if it is not a supported
+         *  rich file type.
+         *
+         *  This HTML string is already escaped and thus is always safe to render.
+         */
+        richHTML: string
+
+        /**
+         * The Git commit containing this blob.
+         */
+        commit: IGitCommit
+
+        /**
+         * The repository containing this Git blob.
+         */
+        repository: IRepository
+
+        /**
+         * The URL to this blob (using the input revision specifier, which may not be immutable).
+         */
+        url: string
+
+        /**
+         * The canonical URL to this blob (using an immutable revision specifier).
+         */
+        canonicalURL: string
+
+        /**
+         * The URLs to this blob on its repository's external services.
+         */
+        externalURLs: IExternalLink[]
+
+        /**
+         * Blame the blob.
+         */
+        blame: IHunk[]
+
+        /**
+         * Highlight the blob contents.
+         */
+        highlight: IHighlightedFile
+
+        /**
+         * Returns dependency references for the blob.
+         */
+        dependencyReferences: IDependencyReferences
+
+        /**
+         * Symbols defined in this blob.
+         */
+        symbols: ISymbolConnection
+    }
+
+    export interface IBlameOnGitBlobArguments {
+        startLine: number
+        endLine: number
+    }
+
+    export interface IHighlightOnGitBlobArguments {
+        disableTimeout: boolean
+        isLightTheme: boolean
+    }
+
+    export interface IDependencyReferencesOnGitBlobArguments {
+        Language: string
+        Line: number
+        Character: number
+    }
+
+    export interface ISymbolsOnGitBlobArguments {
+        /**
+         * Returns the first n symbols from the list.
+         */
+        first?: number | null
+
+        /**
+         * Return symbols matching the query.
+         */
+        query?: string | null
     }
 
     /**
-     * A zero-based position inside a file.
+     *  A file.
+     *
+     *  In a future version of Sourcegraph, a repository's files may be distinct from a repository's blobs
+     *  (for example, to support searching/browsing generated files that aren't committed and don't exist
+     *  as Git blobs). Clients should generally use the GitBlob concrete type and GitCommit.blobs (not
+     *  GitCommit.files), unless they explicitly want to opt-in to different behavior in the future.
+     *
+     *  INTERNAL: This is temporarily named File2 during a migration. Do not refer to the name File2 in
+     *  any API clients as the name will change soon.
      */
-    export interface IPosition {
-        __typename: 'Position'
-
-        /**
-         * The line number (zero-based) of the position.
-         */
-        line: number
-
-        /**
-         * The character offset (zero-based) in the line of the position.
-         */
-        character: number
-    }
+    export type File2 = IGitBlob
 
     /**
-     * A file.
+     *  A file.
+     *
+     *  In a future version of Sourcegraph, a repository's files may be distinct from a repository's blobs
+     *  (for example, to support searching/browsing generated files that aren't committed and don't exist
+     *  as Git blobs). Clients should generally use the GitBlob concrete type and GitCommit.blobs (not
+     *  GitCommit.files), unless they explicitly want to opt-in to different behavior in the future.
+     *
+     *  INTERNAL: This is temporarily named File2 during a migration. Do not refer to the name File2 in
+     *  any API clients as the name will change soon.
      */
-    export interface IFile {
-        __typename: 'File'
+    export interface IFile2 {
+        __typename: 'File2'
 
         /**
-         * The full path (relative to the repository root) of this file.
+         * The full path (relative to the root) of this file.
          */
         path: string
 
@@ -2095,24 +2733,14 @@ declare namespace GQL {
         isDirectory: boolean
 
         /**
-         * The repository containing this file.
-         */
-        repository: IRepository
-
-        /**
-         * The list of Git commits that touched this file.
-         */
-        commits: IGitCommit[]
-
-        /**
-         * The URL to this file.
-         */
-        url: string
-
-        /**
          * The content of this file.
          */
         content: string
+
+        /**
+         * Whether or not it is binary.
+         */
+        binary: boolean
 
         /**
          *  The file rendered as rich HTML, or an empty string if it is not a supported
@@ -2123,14 +2751,19 @@ declare namespace GQL {
         richHTML: string
 
         /**
-         * The URLs to this file on its repository's external services.
+         * The URL to this file (using the input revision specifier, which may not be immutable).
          */
-        externalURLs: IExternalLink[]
+        url: string
 
         /**
-         * Whether or not it is binary.
+         * The canonical URL to this file (using an immutable revision specifier).
          */
-        binary: boolean
+        canonicalURL: string
+
+        /**
+         * The URLs to this file on external services.
+         */
+        externalURLs: IExternalLink[]
 
         /**
          * Highlight the file.
@@ -2138,19 +2771,9 @@ declare namespace GQL {
         highlight: IHighlightedFile
 
         /**
-         * Blame the file.
-         */
-        blame: IHunk[]
-
-        /**
          * Returns dependency references for the file.
          */
         dependencyReferences: IDependencyReferences
-
-        /**
-         * Blame the file and return output in a raw string format.
-         */
-        blameRaw: string
 
         /**
          * Symbols defined in this file.
@@ -2158,28 +2781,18 @@ declare namespace GQL {
         symbols: ISymbolConnection
     }
 
-    export interface IHighlightOnFileArguments {
+    export interface IHighlightOnFile2Arguments {
         disableTimeout: boolean
         isLightTheme: boolean
     }
 
-    export interface IBlameOnFileArguments {
-        startLine: number
-        endLine: number
-    }
-
-    export interface IDependencyReferencesOnFileArguments {
+    export interface IDependencyReferencesOnFile2Arguments {
         Language: string
         Line: number
         Character: number
     }
 
-    export interface IBlameRawOnFileArguments {
-        startLine: number
-        endLine: number
-    }
-
-    export interface ISymbolsOnFileArguments {
+    export interface ISymbolsOnFile2Arguments {
         /**
          * Returns the first n symbols from the list.
          */
@@ -2206,48 +2819,6 @@ declare namespace GQL {
          * The HTML.
          */
         html: string
-    }
-
-    /**
-     * A hunk.
-     */
-    export interface IHunk {
-        __typename: 'Hunk'
-
-        /**
-         * The startLine.
-         */
-        startLine: number
-
-        /**
-         * The endLine.
-         */
-        endLine: number
-
-        /**
-         * The startByte.
-         */
-        startByte: number
-
-        /**
-         * The endByte.
-         */
-        endByte: number
-
-        /**
-         * The rev.
-         */
-        rev: string
-
-        /**
-         * The author.
-         */
-        author: ISignature | null
-
-        /**
-         * The message.
-         */
-        message: string
     }
 
     /**
@@ -2338,6 +2909,119 @@ declare namespace GQL {
          * The repository IDs.
          */
         repoIds: number[]
+    }
+
+    /**
+     * A hunk.
+     */
+    export interface IHunk {
+        __typename: 'Hunk'
+
+        /**
+         * The startLine.
+         */
+        startLine: number
+
+        /**
+         * The endLine.
+         */
+        endLine: number
+
+        /**
+         * The startByte.
+         */
+        startByte: number
+
+        /**
+         * The endByte.
+         */
+        endByte: number
+
+        /**
+         * The rev.
+         */
+        rev: string
+
+        /**
+         * The author.
+         */
+        author: ISignature
+
+        /**
+         * The message.
+         */
+        message: string
+
+        /**
+         * The commit that contains the hunk.
+         */
+        commit: IGitCommit
+    }
+
+    /**
+     * A range inside a file. The start position is inclusive, and the end position is exclusive.
+     */
+    export interface IRange {
+        __typename: 'Range'
+
+        /**
+         * The start position of the range (inclusive).
+         */
+        start: IPosition
+
+        /**
+         * The end position of the range (exclusive).
+         */
+        end: IPosition
+    }
+
+    /**
+     * A zero-based position inside a file.
+     */
+    export interface IPosition {
+        __typename: 'Position'
+
+        /**
+         * The line number (zero-based) of the position.
+         */
+        line: number
+
+        /**
+         * The character offset (zero-based) in the line of the position.
+         */
+        character: number
+    }
+
+    /**
+     * File is temporarily preserved for backcompat with browser extension search API client code.
+     */
+    export interface IFile {
+        __typename: 'File'
+
+        /**
+         * The full path (relative to the repository root) of this file.
+         */
+        path: string
+
+        /**
+         * The base name (i.e., file name only) of this file's path.
+         */
+        name: string
+
+        /**
+         * Whether this is a directory.
+         */
+        isDirectory: boolean
+
+        /**
+         * The URL to this file on Sourcegraph.
+         */
+        url: string
+
+        /**
+         * The repository that contains this file.
+         */
+        repository: IRepository
     }
 
     /**
@@ -2836,7 +3520,7 @@ declare namespace GQL {
     }
 
     /**
-     * ALl possible types of Git refs.
+     * All possible types of Git refs.
      */
     export enum GitRefType {
         /**
@@ -2875,6 +3559,41 @@ declare namespace GQL {
          * The commit object, if it is a commit and it exists; otherwise null.
          */
         commit: IGitCommit | null
+
+        /**
+         * The Git object's type.
+         */
+        type: GitObjectType
+    }
+
+    /**
+     * All possible types of Git objects.
+     */
+    export enum GitObjectType {
+        /**
+         * A Git commit object.
+         */
+        GIT_COMMIT = 'GIT_COMMIT',
+
+        /**
+         * A Git tag object.
+         */
+        GIT_TAG = 'GIT_TAG',
+
+        /**
+         * A Git tree object.
+         */
+        GIT_TREE = 'GIT_TREE',
+
+        /**
+         * A Git blob object.
+         */
+        GIT_BLOB = 'GIT_BLOB',
+
+        /**
+         * A Git object of unknown type.
+         */
+        GIT_UNKNOWN = 'GIT_UNKNOWN',
     }
 
     /**
@@ -3049,19 +3768,30 @@ declare namespace GQL {
         __typename: 'FileDiff'
 
         /**
-         * The repository containing this file.
-         */
-        repository: IRepository
-
-        /**
          * The old (original) path of the file, or null if the file was added.
          */
         oldPath: string | null
 
         /**
+         * The old file, or null if the file was created (oldFile.path == oldPath).
+         */
+        oldFile: File2 | null
+
+        /**
          * The new (changed) path of the file, or null if the file was deleted.
          */
         newPath: string | null
+
+        /**
+         * The new file, or null if the file was deleted (newFile.path == newPath).
+         */
+        newFile: File2 | null
+
+        /**
+         * The old file (if the file was deleted) and otherwise the new file. This file field is typically used by
+         * clients that want to show a "View" link to the file.
+         */
+        mostRelevantFile: File2
 
         /**
          * Hunks that were changed from old to new.
@@ -3323,47 +4053,272 @@ declare namespace GQL {
     }
 
     /**
-     * A list of organizations.
+     * A list of discussion threads.
      */
-    export interface IOrgConnection {
-        __typename: 'OrgConnection'
+    export interface IDiscussionThreadConnection {
+        __typename: 'DiscussionThreadConnection'
 
         /**
-         * A list of organizations.
+         * A list of discussion threads.
          */
-        nodes: IOrg[]
+        nodes: IDiscussionThread[]
 
         /**
-         * The total count of organizations in the connection. This total count may be larger
-         * than the number of nodes in this object when the result is paginated.
+         * The total count of discussion threads in the connection. This total
+         * count may be larger than the number of nodes in this object when the
+         * result is paginated.
          */
         totalCount: number
+
+        /**
+         * Pagination information.
+         */
+        pageInfo: IPageInfo
     }
 
     /**
-     * The configurations for all of the relevant configuration subjects, plus the merged
-     * configuration.
+     * A discussion thread around some target (e.g. a file in a repo).
      */
-    export interface IConfigurationCascade {
-        __typename: 'ConfigurationCascade'
+    export interface IDiscussionThread {
+        __typename: 'DiscussionThread'
 
         /**
-         * The default settings, which are applied first and the lowest priority behind
-         * all configuration subjects' settings.
+         * The discussion thread ID (globally unique).
          */
-        defaults: IConfiguration | null
+        id: ID
 
         /**
-         * The configurations for all of the subjects that are applied for the currently
-         * authenticated user. For example, a user in 2 orgs would have the following
-         * configuration subjects: org 1, org 2, and the user.
+         * The user who authored this discussion thread.
          */
-        subjects: ConfigurationSubject[]
+        author: IUser
 
         /**
-         * The effective configuration, merged from all of the subjects.
+         *  The title of the thread.
+         *
+         *  Note: the contents of the thread (its 'body') is always the first comment
+         *  in the thread. It is always present, even if the user e.g. input no content.
          */
-        merged: IConfiguration
+        title: string
+
+        /**
+         * The target of this discussion thread.
+         */
+        target: DiscussionThreadTarget
+
+        /**
+         * The date when the discussion thread was created.
+         */
+        createdAt: string
+
+        /**
+         * The date when the discussion thread was last updated.
+         */
+        updatedAt: string
+
+        /**
+         * The date when the discussion thread was archived (or null if it has not).
+         */
+        archivedAt: string | null
+
+        /**
+         * The comments in the discussion thread.
+         */
+        comments: IDiscussionCommentConnection
+    }
+
+    export interface ICommentsOnDiscussionThreadArguments {
+        /**
+         * Returns the first n comments from the list.
+         */
+        first?: number | null
+    }
+
+    /**
+     * The target of a discussion thread. Today, the only possible target is a
+     * repository. In the future, this may be extended to include other targets such
+     * as user profiles, extensions, etc. Clients should ignore target types they
+     * do not understand gracefully.
+     */
+    export type DiscussionThreadTarget = IDiscussionThreadTargetRepo
+
+    /**
+     *  A discussion thread that is centered around:
+     *
+     *  - A repository.
+     *  - A directory inside a repository.
+     *  - A file inside a repository.
+     *  - A selection inside a file inside a repository.
+     *
+     */
+    export interface IDiscussionThreadTargetRepo {
+        __typename: 'DiscussionThreadTargetRepo'
+
+        /**
+         * The repository in which the thread was created.
+         */
+        repository: IRepository
+
+        /**
+         * The path (relative to the repository root) of the file or directory that
+         * the thread is referencing, if any. If the path is null, the thread is not
+         * talking about a specific path but rather just the repository generally.
+         */
+        path: string | null
+
+        /**
+         * The branch (but not exact revision) that the thread was referencing, if
+         * any.
+         */
+        branch: IGitRef | null
+
+        /**
+         * The exact revision that the thread was referencing, if any.
+         */
+        revision: IGitRef | null
+
+        /**
+         * The selection that the thread was referencing, if any.
+         */
+        selection: IDiscussionThreadTargetRepoSelection | null
+    }
+
+    /**
+     * A selection within a file.
+     */
+    export interface IDiscussionThreadTargetRepoSelection {
+        __typename: 'DiscussionThreadTargetRepoSelection'
+
+        /**
+         * The line that the selection started on (zero-based, inclusive).
+         */
+        startLine: number
+
+        /**
+         * The character (not byte) of the start line that the selection began on (zero-based, inclusive).
+         */
+        startCharacter: number
+
+        /**
+         * The line that the selection ends on (zero-based, inclusive).
+         */
+        endLine: number
+
+        /**
+         * The character (not byte) of the end line that the selection ended on (zero-based, exclusive).
+         */
+        endCharacter: number
+
+        /**
+         *  The literal textual (UTF-8) lines before the line the selection started
+         *  on.
+         *
+         *  This is an arbitrary number of lines, and may be zero lines, but typically 3.
+         */
+        linesBefore: string
+
+        /**
+         * The literal textual (UTF-8) lines of the selection. i.e. all lines
+         * between and including startLine and endLine.
+         */
+        lines: string
+
+        /**
+         *  The literal textual (UTF-8) lines after the line the selection ended on.
+         *
+         *  This is an arbitrary number of lines, and may be zero lines, but typically 3.
+         */
+        linesAfter: string
+    }
+
+    /**
+     * A list of discussion comments.
+     */
+    export interface IDiscussionCommentConnection {
+        __typename: 'DiscussionCommentConnection'
+
+        /**
+         * A list of discussion comments.
+         */
+        nodes: IDiscussionComment[]
+
+        /**
+         * The total count of discussion comments in the connection. This total
+         * count may be larger than the number of nodes in this object when the
+         * result is paginated.
+         */
+        totalCount: number
+
+        /**
+         * Pagination information.
+         */
+        pageInfo: IPageInfo
+    }
+
+    /**
+     * A comment made within a discussion thread.
+     */
+    export interface IDiscussionComment {
+        __typename: 'DiscussionComment'
+
+        /**
+         * The discussion comment ID (globally unique).
+         */
+        id: ID
+
+        /**
+         * The discussion thread the comment was made in.
+         */
+        thread: IDiscussionThread
+
+        /**
+         * The user who authored this discussion thread.
+         */
+        author: IUser
+
+        /**
+         *  The actual markdown contents of the comment.
+         *
+         *  Empty comments are allowed, so that users can create a discussion thread
+         *  with a title and no comment contents. Thus, clients should be prepared to
+         *  render them. Suggested rendering when the string contains only whitespace
+         *  is "_(no comment text)_".
+         */
+        contents: string
+
+        /**
+         *  The markdown contents rendered as an HTML string. It is already sanitized
+         *  and escaped and thus is always safe to render.
+         *
+         *  Empty comments are allowed, so that users can create a discussion thread
+         *  with a title and no comment contents. Thus, clients should be prepared to
+         *  render them. Suggested rendering when the string contains only whitespace
+         *  is "<em>(no comment text)</em>".
+         */
+        html: string
+
+        /**
+         * The date when the discussion thread was created.
+         */
+        createdAt: string
+
+        /**
+         * The date when the discussion thread was last updated.
+         */
+        updatedAt: string
+    }
+
+    export interface IHtmlOnDiscussionCommentArguments {
+        options?: IMarkdownOptions | null
+    }
+
+    /**
+     * Describes options for rendering Markdown.
+     */
+    export interface IMarkdownOptions {
+        /**
+         * A dummy null value (empty input types are not allowed yet).
+         */
+        alwaysNil?: string | null
     }
 
     /**
@@ -3428,35 +4383,35 @@ declare namespace GQL {
         /**
          * Repositories that were eligible to be searched.
          */
-        repositories: string[]
+        repositories: IRepository[]
 
         /**
          * Repositories that were actually searched. Excludes repositories that would have been searched but were not
          * because a timeout or error occurred while performing the search, or because the result limit was already
          * reached.
          */
-        repositoriesSearched: string[]
+        repositoriesSearched: IRepository[]
 
         /**
          * Indexed repositories searched. This is a subset of repositoriesSearched.
          */
-        indexedRepositoriesSearched: string[]
+        indexedRepositoriesSearched: IRepository[]
 
         /**
          * Repositories that are busy cloning onto gitserver.
          */
-        cloning: string[]
+        cloning: IRepository[]
 
         /**
          * Repositories or commits that do not exist.
          */
-        missing: string[]
+        missing: IRepository[]
 
         /**
          * Repositories or commits which we did not manage to search in time. Trying
          * again usually will work.
          */
-        timedout: string[]
+        timedout: IRepository[]
 
         /**
          * True if indexed search is enabled but was not available during this search.
@@ -3491,7 +4446,22 @@ declare namespace GQL {
         __typename: 'FileMatch'
 
         /**
+         *  The file containing the match.
+         *
+         *  KNOWN ISSUE: This file's "commit" field contains incomplete data.
+         *
+         *  KNOWN ISSUE: This field's type should be File! not GitBlob!.
+         */
+        file: IGitBlob
+
+        /**
+         * The repository containing the file match.
+         */
+        repository: IRepository
+
+        /**
          * The resource.
+         * @deprecated use the file field instead
          */
         resource: string
 
@@ -3658,6 +4628,26 @@ declare namespace GQL {
          * The value.
          */
         value: string
+
+        /**
+         * The string to be displayed in the UI.
+         */
+        label: string
+
+        /**
+         * Number of matches for a given filter.
+         */
+        count: number
+
+        /**
+         * Whether the results returned are incomplete.
+         */
+        limitHit: boolean
+
+        /**
+         * The kind of filter. Should be "file" or "repo".
+         */
+        kind: string
     }
 
     /**
@@ -3781,309 +4771,6 @@ declare namespace GQL {
     }
 
     /**
-     *  Represents a shared item (either a shared code comment OR code snippet).
-     * !
-     * ! 🚨 SECURITY: Every field here is accessible publicly given a shared item URL.
-     * ! Do NOT use any non-primitive GraphQL type here unless it is also a SharedItem
-     * ! type.
-     */
-    export interface ISharedItem {
-        __typename: 'SharedItem'
-
-        /**
-         * Who shared the item.
-         */
-        author: ISharedItemUser
-
-        /**
-         * Whether or not this shared item is public.
-         */
-        public: boolean
-
-        /**
-         * The thread.
-         */
-        thread: ISharedItemThread
-
-        /**
-         * Present only if the shared item was a specific comment.
-         */
-        comment: ISharedItemComment | null
-    }
-
-    /**
-     *  Like the User type, except with fields that should not be accessible with a
-     *  secret URL removed.
-     * !
-     * ! 🚨 SECURITY: Every field here is accessible publicly given a shared item URL.
-     * ! Do NOT use any non-primitive GraphQL type here unless it is also a SharedItem
-     * ! type.
-     */
-    export interface ISharedItemUser {
-        __typename: 'SharedItemUser'
-
-        /**
-         * The display name.
-         */
-        displayName: string | null
-
-        /**
-         * The username.
-         */
-        username: string
-
-        /**
-         * The avatar URL.
-         */
-        avatarURL: string | null
-    }
-
-    /**
-     *  Like the Thread type, except with fields that should not be accessible with a
-     *  secret URL removed.
-     * !
-     * ! 🚨 SECURITY: Every field here is accessible publicly given a shared item URL.
-     * ! Do NOT use any non-primitive GraphQL type here unless it is also a SharedItem
-     * ! type.
-     */
-    export interface ISharedItemThread {
-        __typename: 'SharedItemThread'
-
-        /**
-         * The id.
-         */
-        id: ID
-
-        /**
-         * The database ID.
-         */
-        databaseID: number
-
-        /**
-         * The repository.
-         */
-        repo: ISharedItemOrgRepo
-
-        /**
-         * The file.
-         */
-        file: string
-
-        /**
-         * The branch.
-         */
-        branch: string | null
-
-        /**
-         * The repository evision.
-         */
-        repoRevision: string
-
-        /**
-         * The lines revision.
-         */
-        linesRevision: string
-
-        /**
-         * The title.
-         */
-        title: string
-
-        /**
-         * The start line.
-         */
-        startLine: number
-
-        /**
-         * The end line.
-         */
-        endLine: number
-
-        /**
-         * The start character.
-         */
-        startCharacter: number
-
-        /**
-         * The end character.
-         */
-        endCharacter: number
-
-        /**
-         * The range length.
-         */
-        rangeLength: number
-
-        /**
-         * The time when this was created.
-         */
-        createdAt: string
-
-        /**
-         * The time when this was archived.
-         */
-        archivedAt: string | null
-
-        /**
-         * The author.
-         */
-        author: ISharedItemUser
-
-        /**
-         * The lines.
-         */
-        lines: ISharedItemThreadLines | null
-
-        /**
-         * The comments.
-         */
-        comments: ISharedItemComment[]
-    }
-
-    /**
-     *  Like the OrgRepo type, except with fields that should not be accessible with
-     *  a secret URL removed.
-     * !
-     * ! 🚨 SECURITY: Every field here is accessible publicly given a shared item URL.
-     * ! Do NOT use any non-primitive GraphQL type here unless it is also a SharedItem
-     * ! type.
-     */
-    export interface ISharedItemOrgRepo {
-        __typename: 'SharedItemOrgRepo'
-
-        /**
-         * The ID.
-         */
-        id: number
-
-        /**
-         * The remote URI.
-         */
-        remoteUri: string
-
-        /**
-         * See OrgRepo.repository.
-         */
-        repository: IRepository | null
-    }
-
-    /**
-     *  Exactly the same as the ThreadLines type, except it cannot have sensitive
-     *  fields accidentally added.
-     * !
-     * ! 🚨 SECURITY: Every field here is accessible publicly given a shared item URL.
-     * ! Do NOT use any non-primitive GraphQL type here unless it is also a SharedItem
-     * ! type.
-     */
-    export interface ISharedItemThreadLines {
-        __typename: 'SharedItemThreadLines'
-
-        /**
-         * Returns the HTML before.
-         */
-        htmlBefore: string
-
-        /**
-         * Returns the HTML.
-         */
-        html: string
-
-        /**
-         * Returns the HTML after.
-         */
-        htmlAfter: string
-
-        /**
-         * The text before.
-         */
-        textBefore: string
-
-        /**
-         * The text.
-         */
-        text: string
-
-        /**
-         * The text after.
-         */
-        textAfter: string
-
-        /**
-         * The start of the text selection range.
-         */
-        textSelectionRangeStart: number
-
-        /**
-         * The length of the text selection range.
-         */
-        textSelectionRangeLength: number
-    }
-
-    export interface IHtmlBeforeOnSharedItemThreadLinesArguments {
-        isLightTheme: boolean
-    }
-
-    export interface IHtmlOnSharedItemThreadLinesArguments {
-        isLightTheme: boolean
-    }
-
-    export interface IHtmlAfterOnSharedItemThreadLinesArguments {
-        isLightTheme: boolean
-    }
-
-    /**
-     *  Like the Comment type, except with fields that should not be accessible with a
-     *  secret URL removed.
-     * !
-     * ! 🚨 SECURITY: Every field here is accessible publicly given a shared item URL.
-     * ! Do NOT use any non-primitive GraphQL type here unless it is also a SharedItem
-     * ! type.
-     */
-    export interface ISharedItemComment {
-        __typename: 'SharedItemComment'
-
-        /**
-         * The ID.
-         */
-        id: ID
-
-        /**
-         * The database ID.
-         */
-        databaseID: number
-
-        /**
-         * The title.
-         */
-        title: string
-
-        /**
-         * The contents.
-         */
-        contents: string
-
-        /**
-         * The rich HTML.
-         */
-        richHTML: string
-
-        /**
-         * The time when this was created.
-         */
-        createdAt: string
-
-        /**
-         * The time when this was updated.
-         */
-        updatedAt: string
-
-        /**
-         * The author.
-         */
-        author: ISharedItemUser
-    }
-
-    /**
      *  A site is an installation of Sourcegraph that consists of one or more
      *  servers that share the same configuration and database.
      *
@@ -4116,14 +4803,31 @@ declare namespace GQL {
         latestSettings: ISettings | null
 
         /**
+         * Deprecated settings specified in the site configuration "settings" field. These are distinct from a site's
+         * latestSettings (which are stored in the DB) and are applied at the lowest level of precedence.
+         */
+        deprecatedSiteConfigurationSettings: string | null
+
+        /**
+         * The configuration cascade including this subject and all applicable subjects whose configuration is lower
+         * precedence than this subject.
+         */
+        configurationCascade: IConfigurationCascade
+
+        /**
+         * The URL to the site's settings.
+         */
+        settingsURL: string
+
+        /**
          * Whether the viewer can reload the site (with the reloadSite mutation).
          */
         canReloadSite: boolean
 
         /**
-         * List all threads. This is an experimental feature.
+         * Whether the viewer can modify the subject's configuration.
          */
-        threads: IThreadConnection
+        viewerCanAdminister: boolean
 
         /**
          * Lists all language servers.
@@ -4136,9 +4840,32 @@ declare namespace GQL {
         langServer: ILangServer | null
 
         /**
+         *  The status of language server management capabilities.
+         *
+         *  Only site admins may view this field.
+         */
+        languageServerManagementStatus: ILanguageServerManagementStatus | null
+
+        /**
          * A list of all access tokens on this site.
          */
         accessTokens: IAccessTokenConnection
+
+        /**
+         * A list of all authentication providers.
+         */
+        authProviders: IAuthProviderConnection
+
+        /**
+         * A list of all user external accounts on this site.
+         */
+        externalAccounts: IExternalAccountConnection
+
+        /**
+         * The name of the Sourcegraph product that is used on this site ("Sourcegraph Server" or "Sourcegraph Data
+         * Center" when running in production).
+         */
+        productName: string
 
         /**
          * The build version of the Sourcegraph software that is running on this site (of the form
@@ -4195,16 +4922,21 @@ declare namespace GQL {
         sendsEmailVerificationEmails: boolean
 
         /**
+         * Information about this site's license to use Sourcegraph software. This is about the license
+         * for the use of Sourcegraph itself; it is not about repository licenses or open-source
+         * licenses.
+         */
+        sourcegraphLicense: ISourcegraphLicense
+
+        /**
          * The activity.
          */
         activity: ISiteActivity
-    }
 
-    export interface IThreadsOnSiteArguments {
         /**
-         * Returns the first n threads from the list.
+         * A list of extensions that are configured for this site.
          */
-        first?: number | null
+        configuredExtensions: IConfiguredExtensionConnection
     }
 
     export interface ILangServerOnSiteArguments {
@@ -4216,6 +4948,33 @@ declare namespace GQL {
          * Returns the first n access tokens from the list.
          */
         first?: number | null
+    }
+
+    export interface IExternalAccountsOnSiteArguments {
+        /**
+         * Returns the first n external accounts from the list.
+         */
+        first?: number | null
+
+        /**
+         * Include only external accounts associated with this user.
+         */
+        user?: ID | null
+
+        /**
+         * Include only external accounts with this service type.
+         */
+        serviceType?: string | null
+
+        /**
+         * Include only external accounts with this service ID.
+         */
+        serviceID?: string | null
+
+        /**
+         * Include only external accounts with this client ID.
+         */
+        clientID?: string | null
     }
 
     export interface IActivityOnSiteArguments {
@@ -4233,6 +4992,32 @@ declare namespace GQL {
          * Months of history.
          */
         months?: number | null
+    }
+
+    export interface IConfiguredExtensionsOnSiteArguments {
+        /**
+         * Returns the first n extensions from the list.
+         */
+        first?: number | null
+
+        /**
+         * Include enabled extensions.
+         * @default true
+         */
+        enabled?: boolean | null
+
+        /**
+         * Include disabled extensions.
+         * @default false
+         */
+        disabled?: boolean | null
+
+        /**
+         * Include entries that do not refer to a valid registry extension (e.g., entries whose extension ID doesn't
+         * match any known registry extensions).
+         * @default false
+         */
+        invalid?: boolean | null
     }
 
     /**
@@ -4255,10 +5040,10 @@ declare namespace GQL {
         pendingContents: string | null
 
         /**
-         * Messages describing validation errors or usage of deprecated configuration in the configuration JSON
-         * (pendingContents if it exists, otherwise effectiveContents). This includes both JSON Schema validation errors
-         * and other messages that perform more advanced checks on the configuration (that can't be expressed in the
-         * JSON Schema).
+         * Messages describing validation problems or usage of deprecated configuration in the configuration JSON
+         * (pendingContents if it exists, otherwise effectiveContents). This includes both JSON Schema validation
+         * problems and other messages that perform more advanced checks on the configuration (that can't be expressed
+         * in the JSON Schema).
          */
         validationMessages: string[]
 
@@ -4340,6 +5125,13 @@ declare namespace GQL {
         pending: boolean
 
         /**
+         *  Whether or not the language server is being downloaded.
+         *
+         *  Always false in Data Center and for custom language servers.
+         */
+        downloading: boolean
+
+        /**
          *  Whether or not the current user can enable the language server or not.
          *
          *  Always false in Data Center.
@@ -4409,6 +5201,89 @@ declare namespace GQL {
     }
 
     /**
+     * Status about management capabilities for language servers.
+     */
+    export interface ILanguageServerManagementStatus {
+        __typename: 'LanguageServerManagementStatus'
+
+        /**
+         *  Whether this site can manage (enable/disable/restart/update) language servers on its own.
+         *
+         *  Even if this field's value is true, individual language servers may not be manageable. Clients must check the
+         *  LangServer.canXyz fields.
+         *
+         *  Always false on Data Center.
+         */
+        siteCanManage: boolean
+
+        /**
+         * The reason why the site can't manage language servers, if siteCanManage == false.
+         */
+        reason: string | null
+    }
+
+    /**
+     * A list of authentication providers.
+     */
+    export interface IAuthProviderConnection {
+        __typename: 'AuthProviderConnection'
+
+        /**
+         * A list of authentication providers.
+         */
+        nodes: IAuthProvider[]
+
+        /**
+         * The total count of authentication providers in the connection. This total count may be larger than the number of nodes
+         * in this object when the result is paginated.
+         */
+        totalCount: number
+
+        /**
+         * Pagination information.
+         */
+        pageInfo: IPageInfo
+    }
+
+    /**
+     * A provider of user authentication, such as an external single-sign-on service (e.g., using OpenID
+     * Connect or SAML).
+     */
+    export interface IAuthProvider {
+        __typename: 'AuthProvider'
+
+        /**
+         * The type of the auth provider.
+         */
+        serviceType: string
+
+        /**
+         * An identifier for the service that the auth provider represents.
+         */
+        serviceID: string
+
+        /**
+         * An identifier for the client of the service that the auth provider represents.
+         */
+        clientID: string
+
+        /**
+         * The human-readable name of the provider.
+         */
+        displayName: string
+
+        /**
+         * Whether this auth provider is the builtin username-password auth provider.
+         */
+        isBuiltin: boolean
+
+        /**
+         * A URL that, when visited, initiates the authentication process for this auth provider.
+         */
+        authenticationURL: string | null
+    }
+
+    /**
      * Information about software updates for Sourcegraph.
      */
     export interface IUpdateCheck {
@@ -4435,6 +5310,68 @@ declare namespace GQL {
          * If an update is available, the version string of the updated version.
          */
         updateVersionAvailable: string | null
+    }
+
+    /**
+     * Information about this site's license to use Sourcegraph software. This is about a license for the
+     * use of Sourcegraph itself; it is not about a repository license or an open-source license.
+     */
+    export interface ISourcegraphLicense {
+        __typename: 'SourcegraphLicense'
+
+        /**
+         * An identifier for this Sourcegraph site, generated randomly upon initialization. This value
+         * can be overridden by the site admin.
+         */
+        siteID: string
+
+        /**
+         * An email address of the initial site admin.
+         */
+        primarySiteAdminEmail: string
+
+        /**
+         * The total number of users on this Sourcegraph site.
+         */
+        userCount: number
+
+        /**
+         * The Sourcegraph product name ("Sourcegraph Server" or "Sourcegraph Data Center" when running
+         * in production).
+         */
+        productName: string
+
+        /**
+         * A list of premium Sourcegraph features and associated information.
+         */
+        premiumFeatures: ISourcegraphFeature[]
+    }
+
+    /**
+     * A feature of Sourcegraph software and associated information.
+     */
+    export interface ISourcegraphFeature {
+        __typename: 'SourcegraphFeature'
+
+        /**
+         * The title of this feature.
+         */
+        title: string
+
+        /**
+         * A description of this feature.
+         */
+        description: string
+
+        /**
+         * Whether this feature is enabled on this Sourcegraph site.
+         */
+        enabled: boolean
+
+        /**
+         * A URL with more information about this feature.
+         */
+        informationURL: string
     }
 
     /**
@@ -4502,48 +5439,127 @@ declare namespace GQL {
          * than the number of nodes in this object when the result is paginated.
          */
         totalCount: number
+
+        /**
+         * The count of survey responses submitted since 30 calendar days ago at 00:00 UTC.
+         */
+        last30DaysCount: number
+
+        /**
+         * The average score of survey responses in the connection submitted since 30 calendar days ago at 00:00 UTC.
+         */
+        averageScore: number
+
+        /**
+         *  The net promoter score (NPS) of survey responses in the connection submitted since 30 calendar days ago at 00:00 UTC.
+         *  Return value is a signed integer, scaled from -100 (all detractors) to +100 (all promoters).
+         *
+         *  See https://en.wikipedia.org/wiki/Net_Promoter for explanation.
+         */
+        netPromoterScore: number
     }
 
     /**
-     * An individual response to a user satisfaction (NPS) survey.
+     * An extension registry.
      */
-    export interface ISurveyResponse {
-        __typename: 'SurveyResponse'
+    export interface IExtensionRegistry {
+        __typename: 'ExtensionRegistry'
 
         /**
-         * The unique ID of the survey response
+         *  Find an extension by its extension ID (which is the concatenation of the publisher name, a slash ("/"), and the
+         *  extension name).
+         *
+         *  To find an extension by its GraphQL ID, use Query.node.
          */
-        id: ID
+        extension: IRegistryExtension | null
 
         /**
-         * The user who submitted the survey (if they were authenticated at the time).
+         * A list of extensions published in the extension registry.
          */
-        user: IUser | null
+        extensions: IRegistryExtensionConnection
 
         /**
-         * The email that the user manually entered (if they were NOT authenticated at the time).
+         * A list of publishers with at least 1 extension in the registry.
          */
-        email: string | null
+        publishers: IRegistryPublisherConnection
 
         /**
-         * User's likelihood of recommending Sourcegraph to a friend, from 0-10.
+         * A list of publishers that the viewer may publish extensions as.
          */
-        score: number
+        viewerPublishers: RegistryPublisher[]
 
         /**
-         * The answer to "What is the most important reason for the score you gave".
+         *  The extension ID prefix for extensions that are published in the local extension registry. This is the
+         *  hostname (and port, if non-default HTTP/HTTPS) of the Sourcegraph "appURL" site configuration property.
+         *
+         *  It is null if extensions published on this Sourcegraph site do not have an extension ID prefix.
+         *
+         *  Examples: "sourcegraph.example.com/", "sourcegraph.example.com:1234/"
          */
-        reason: string | null
+        localExtensionIDPrefix: string | null
+    }
+
+    export interface IExtensionOnExtensionRegistryArguments {
+        extensionID: string
+    }
+
+    export interface IExtensionsOnExtensionRegistryArguments {
+        /**
+         * Returns the first n extensions from the list.
+         */
+        first?: number | null
 
         /**
-         * The answer to "What can Sourcegraph do to provide a better product"
+         * Returns only extensions from this publisher.
          */
-        better: string | null
+        publisher?: ID | null
 
         /**
-         * The time when this response was created.
+         * Returns only extensions matching the query.
          */
-        createdAt: string
+        query?: string | null
+
+        /**
+         * Include extensions from the local registry.
+         * @default true
+         */
+        local?: boolean | null
+
+        /**
+         * Include extensions from remote registries.
+         * @default true
+         */
+        remote?: boolean | null
+    }
+
+    export interface IPublishersOnExtensionRegistryArguments {
+        /**
+         * Return the first n publishers from the list.
+         */
+        first?: number | null
+    }
+
+    /**
+     * A list of publishers of extensions in the registry.
+     */
+    export interface IRegistryPublisherConnection {
+        __typename: 'RegistryPublisherConnection'
+
+        /**
+         * A list of publishers.
+         */
+        nodes: RegistryPublisher[]
+
+        /**
+         * The total count of publishers in the connection. This total count may be larger than the number of
+         * nodes in this object when the result is paginated.
+         */
+        totalCount: number
+
+        /**
+         * Pagination information.
+         */
+        pageInfo: IPageInfo
     }
 
     /**
@@ -4553,17 +5569,6 @@ declare namespace GQL {
         __typename: 'Mutation'
 
         /**
-         * Creates a thread. This is an experimental feature.
-         */
-        createThread: IThread
-
-        /**
-         * Creates a thread. This is an experimental feature.
-         * @deprecated use createThread instead
-         */
-        createThread2: IThread
-
-        /**
          *  Updates the user profile information for the user with the given ID.
          *
          *  Only the user and site admins may perform this mutation.
@@ -4571,61 +5576,18 @@ declare namespace GQL {
         updateUser: IEmptyResponse
 
         /**
-         *  Updates the user settings for the user with the given ID.
+         *  Creates an organization. The caller is added as a member of the newly created organization.
          *
-         *  Only the user and site admins may perform this mutation.
+         *  Only authenticated users may perform this mutation.
          */
-        updateUserSettings: ISettings
+        createOrganization: IOrg
 
         /**
-         * Update the global settings for all users.
+         *  Updates an organization.
+         *
+         *  Only site admins and any member of the organization may perform this mutation.
          */
-        updateSiteSettings: ISettings
-
-        /**
-         * Updates a thread. This is an experimental feature.
-         */
-        updateThread: IThread
-
-        /**
-         * Adds a comment to a thread. This is an experimental feature.
-         */
-        addCommentToThread: IThread
-
-        /**
-         *  This method is the same as addCommentToThread, the only difference is
-         *  that authentication is based on the secret ULID instead of the current
-         *  user. This is an experimental feature.
-         * !
-         * ! 🚨 SECURITY: Every field of the return type here is accessible publicly
-         * ! given a shared item URL.
-         */
-        addCommentToThreadShared: ISharedItemThread
-
-        /**
-         * Shares a thread. This is an experimental feature.
-         */
-        shareThread: string
-
-        /**
-         * Shares a comment. This is an experimental feature.
-         */
-        shareComment: string
-
-        /**
-         * Creates an org.
-         */
-        createOrg: IOrg
-
-        /**
-         * Updates an org.
-         */
-        updateOrg: IOrg
-
-        /**
-         * Updates an org's settings.
-         */
-        updateOrgSettings: ISettings
+        updateOrganization: IOrg
 
         /**
          * Deletes an organization. Only site admins may perform this mutation.
@@ -4706,16 +5668,18 @@ declare namespace GQL {
         deleteRepository: IEmptyResponse | null
 
         /**
-         * Creates a user account for a new user and generates a reset password link that the user
-         * must visit to sign into the account. Only site admins may perform this mutation.
+         *  Creates a new user account.
+         *
+         *  Only site admins may perform this mutation.
          */
-        createUserBySiteAdmin: ICreateUserBySiteAdminResult
+        createUser: ICreateUserResult
 
         /**
-         * Randomize a user's password so that they need to reset it before they can sign in again.
-         * Only site admins may perform this mutation.
+         *  Randomize a user's password so that they need to reset it before they can sign in again.
+         *
+         *  Only site admins may perform this mutation.
          */
-        randomizeUserPasswordBySiteAdmin: IRandomizeUserPasswordBySiteAdminResult
+        randomizeUserPassword: IRandomizeUserPasswordResult
 
         /**
          *  Adds an email address to the user's account. The email address will be marked as unverified until the user
@@ -4744,13 +5708,6 @@ declare namespace GQL {
          * Deletes a user account. Only site admins may perform this mutation.
          */
         deleteUser: IEmptyResponse | null
-
-        /**
-         *  Invite a user to the organization, either by username or email address.
-         *
-         *  Only organization members and site admins may perform this mutation.
-         */
-        inviteUserToOrganization: IInviteUserResult | null
 
         /**
          * Updates the current user's password. The oldPassword arg must match the user's current password.
@@ -4789,23 +5746,51 @@ declare namespace GQL {
         deleteExternalAccount: IEmptyResponse
 
         /**
-         * Accepts a user invite.
+         *  Invite the user with the given username to join the organization. The invited user account must already
+         *  exist.
+         *
+         *  Only site admins and any organization member may perform this mutation.
          */
-        acceptUserInvite: IEmptyResponse | null
+        inviteUserToOrganization: IInviteUserToOrganizationResult
 
         /**
-         *  Immediately add a user to the organization, either by username or email address, without sending an
-         *  invitation email.
+         *  Accept or reject an existing organization invitation.
          *
-         *  Only site admins may perform this mutation. Organization members may use the inviteUser mutation to invite
-         *  users.
+         *  Only the recipient of the invitation may perform this mutation.
+         */
+        respondToOrganizationInvitation: IEmptyResponse
+
+        /**
+         *  Resend the notification about an organization invitation to the recipient.
+         *
+         *  Only site admins and any member of the organization may perform this mutation.
+         */
+        resendOrganizationInvitationNotification: IEmptyResponse
+
+        /**
+         *  Revoke an existing organization invitation.
+         *
+         *  If the invitation has been accepted or rejected, it may no longer be revoked. After an
+         *  invitation is revoked, the recipient may not accept or reject it. Both cases yield an error.
+         *
+         *  Only site admins and any member of the organization may perform this mutation.
+         */
+        revokeOrganizationInvitation: IEmptyResponse
+
+        /**
+         *  Immediately add a user as a member to the organization, without sending an invitation email.
+         *
+         *  Only site admins may perform this mutation. Organization members may use the inviteUserToOrganization
+         *  mutation to invite users.
          */
         addUserToOrganization: IEmptyResponse
 
         /**
-         * Removes a user from an organization.
+         *  Removes a user as a member from an organization.
+         *
+         *  Only site admins and any member of the organization may perform this mutation.
          */
-        removeUserFromOrg: IEmptyResponse | null
+        removeUserFromOrganization: IEmptyResponse | null
 
         /**
          * Adds a Phabricator repository to Sourcegraph.
@@ -4847,6 +5832,11 @@ declare namespace GQL {
         langServers: ILangServersMutation | null
 
         /**
+         * Manages discussions.
+         */
+        discussions: IDiscussionsMutation | null
+
+        /**
          *  Sets whether the user with the specified user ID is a site admin.
          * !
          * ! 🚨 SECURITY: Only trusted users should be given site admin permissions.
@@ -4866,14 +5856,11 @@ declare namespace GQL {
          * Submits a user satisfaction (NPS) survey.
          */
         submitSurvey: IEmptyResponse | null
-    }
 
-    export interface ICreateThreadOnMutationArguments {
-        input: ICreateThreadInput
-    }
-
-    export interface ICreateThread2OnMutationArguments {
-        input: ICreateThreadInput
+        /**
+         * Manages the extension registry.
+         */
+        extensionRegistry: IExtensionRegistryMutation
     }
 
     export interface IUpdateUserOnMutationArguments {
@@ -4883,71 +5870,14 @@ declare namespace GQL {
         avatarURL?: string | null
     }
 
-    export interface IUpdateUserSettingsOnMutationArguments {
-        user: ID
-        lastKnownSettingsID?: number | null
-        contents: string
-    }
-
-    export interface IUpdateSiteSettingsOnMutationArguments {
-        lastKnownSettingsID?: number | null
-        contents: string
-    }
-
-    export interface IUpdateThreadOnMutationArguments {
-        threadID: ID
-        archived?: boolean | null
-    }
-
-    export interface IAddCommentToThreadOnMutationArguments {
-        threadID: ID
-        contents: string
-    }
-
-    export interface IAddCommentToThreadSharedOnMutationArguments {
-        ulid: string
-        threadID: ID
-        contents: string
-    }
-
-    export interface IShareThreadOnMutationArguments {
-        threadID: ID
-    }
-
-    export interface IShareCommentOnMutationArguments {
-        commentID: ID
-    }
-
-    export interface ICreateOrgOnMutationArguments {
+    export interface ICreateOrganizationOnMutationArguments {
         name: string
-        displayName: string
-    }
-
-    export interface IUpdateOrgOnMutationArguments {
-        id: ID
         displayName?: string | null
     }
 
-    export interface IUpdateOrgSettingsOnMutationArguments {
-        /**
-         * The ID of the org whose settings should be updated.
-         */
-        id?: ID | null
-
-        /**
-         * DEPRECATED: use id instead.
-         */
-        orgID?: ID | null
-
-        /**
-         * The last known settings ID.
-         */
-        lastKnownSettingsID?: number | null
-
-        /**
-         * The contents of the settings.
-         */
-        contents: string
+    export interface IUpdateOrganizationOnMutationArguments {
+        id: ID
+        displayName?: string | null
     }
 
     export interface IDeleteOrganizationOnMutationArguments {
@@ -4991,12 +5921,19 @@ declare namespace GQL {
         repository: ID
     }
 
-    export interface ICreateUserBySiteAdminOnMutationArguments {
+    export interface ICreateUserOnMutationArguments {
+        /**
+         * The new user's username.
+         */
         username: string
-        email: string
+
+        /**
+         * The new user's optional email address. If given, it is marked as verified.
+         */
+        email?: string | null
     }
 
-    export interface IRandomizeUserPasswordBySiteAdminOnMutationArguments {
+    export interface IRandomizeUserPasswordOnMutationArguments {
         user: ID
     }
 
@@ -5020,11 +5957,6 @@ declare namespace GQL {
         user: ID
     }
 
-    export interface IInviteUserToOrganizationOnMutationArguments {
-        organization: ID
-        usernameOrEmail: string
-    }
-
     export interface IUpdatePasswordOnMutationArguments {
         oldPassword: string
         newPassword: string
@@ -5045,18 +5977,45 @@ declare namespace GQL {
         externalAccount: ID
     }
 
-    export interface IAcceptUserInviteOnMutationArguments {
-        inviteToken: string
+    export interface IInviteUserToOrganizationOnMutationArguments {
+        organization: ID
+        username: string
+    }
+
+    export interface IRespondToOrganizationInvitationOnMutationArguments {
+        /**
+         * The organization invitation.
+         */
+        organizationInvitation: ID
+
+        /**
+         * The response to the invitation.
+         */
+        responseType: OrganizationInvitationResponseType
+    }
+
+    export interface IResendOrganizationInvitationNotificationOnMutationArguments {
+        /**
+         * The organization invitation.
+         */
+        organizationInvitation: ID
+    }
+
+    export interface IRevokeOrganizationInvitationOnMutationArguments {
+        /**
+         * The organization invitation.
+         */
+        organizationInvitation: ID
     }
 
     export interface IAddUserToOrganizationOnMutationArguments {
         organization: ID
-        usernameOrEmail: string
+        username: string
     }
 
-    export interface IRemoveUserFromOrgOnMutationArguments {
-        userID: ID
-        orgID: ID
+    export interface IRemoveUserFromOrganizationOnMutationArguments {
+        user: ID
+        organization: ID
     }
 
     export interface IAddPhabricatorRepoOnMutationArguments {
@@ -5154,131 +6113,6 @@ declare namespace GQL {
     }
 
     /**
-     * Input Object for creating threads.
-     */
-    export interface ICreateThreadInput {
-        /**
-         * The ID of the organization on which to create the thread.
-         */
-        orgID: ID
-
-        /**
-         * The ID of the canonical remote.
-         */
-        canonicalRemoteID: string
-
-        /**
-         * The clone URL.
-         */
-        cloneURL: string
-
-        /**
-         * The repo revision path.
-         */
-        repoRevisionPath: string
-
-        /**
-         * The lines revision path.
-         */
-        linesRevisionPath: string
-
-        /**
-         * The repo revision.
-         */
-        repoRevision: string
-
-        /**
-         * The lines revision.
-         */
-        linesRevision: string
-
-        /**
-         * The branch.
-         */
-        branch?: string | null
-
-        /**
-         * The start line.
-         */
-        startLine: number
-
-        /**
-         * The end line.
-         */
-        endLine: number
-
-        /**
-         * The start character.
-         */
-        startCharacter: number
-
-        /**
-         * The end character.
-         */
-        endCharacter: number
-
-        /**
-         * The range length.
-         */
-        rangeLength: number
-
-        /**
-         * The contents.
-         */
-        contents: string
-
-        /**
-         * The lines.
-         */
-        lines?: IThreadLinesInput | null
-    }
-
-    /**
-     * The Input Object for ThreadLines.
-     */
-    export interface IThreadLinesInput {
-        /**
-         * HTML context lines before 'html'.
-         */
-        htmlBefore: string
-
-        /**
-         * HTML lines that the user's selection was made on.
-         */
-        html: string
-
-        /**
-         * HTML context lines after 'html'.
-         */
-        htmlAfter: string
-
-        /**
-         * Text context lines before 'text'.
-         */
-        textBefore: string
-
-        /**
-         * Text lines that the user's selection was made on.
-         */
-        text: string
-
-        /**
-         * Text context lines after 'text'.
-         */
-        textAfter: string
-
-        /**
-         * Byte offset into textLines where user selection began.
-         */
-        textSelectionRangeStart: number
-
-        /**
-         * Length in bytes of the user selection.
-         */
-        textSelectionRangeLength: number
-    }
-
-    /**
      * Represents a null return value.
      */
     export interface IEmptyResponse {
@@ -5304,39 +6138,34 @@ declare namespace GQL {
     }
 
     /**
-     * The result for Mutation.createUserBySiteAdmin.
+     * The result for Mutation.createUser.
      */
-    export interface ICreateUserBySiteAdminResult {
-        __typename: 'CreateUserBySiteAdminResult'
+    export interface ICreateUserResult {
+        __typename: 'CreateUserResult'
 
         /**
-         * The reset password URL that the new user must visit to sign into their account.
+         * The new user.
          */
-        resetPasswordURL: string
+        user: IUser
+
+        /**
+         * The reset password URL that the new user must visit to sign into their account. If the builtin
+         * username-password authentication provider is not enabled, this field's value is null.
+         */
+        resetPasswordURL: string | null
     }
 
     /**
-     * The result for Mutation.randomizeUserPasswordBySiteAdmin.
+     * The result for Mutation.randomizeUserPassword.
      */
-    export interface IRandomizeUserPasswordBySiteAdminResult {
-        __typename: 'RandomizeUserPasswordBySiteAdminResult'
+    export interface IRandomizeUserPasswordResult {
+        __typename: 'RandomizeUserPasswordResult'
 
         /**
-         * The reset password URL that the user must visit to sign into their account again.
+         * The reset password URL that the user must visit to sign into their account again. If the builtin
+         * username-password authentication provider is not enabled, this field's value is null.
          */
-        resetPasswordURL: string
-    }
-
-    /**
-     * A invite user result.
-     */
-    export interface IInviteUserResult {
-        __typename: 'InviteUserResult'
-
-        /**
-         * The URL that the invited user can visit to accept the invitation.
-         */
-        acceptInviteURL: string
+        resetPasswordURL: string | null
     }
 
     /**
@@ -5358,6 +6187,24 @@ declare namespace GQL {
     }
 
     /**
+     * The result of Mutation.inviteUserToOrganization.
+     */
+    export interface IInviteUserToOrganizationResult {
+        __typename: 'InviteUserToOrganizationResult'
+
+        /**
+         * Whether an invitation email was sent. If emails are not enabled on this site or if the user has no verified
+         * email address, an email will not be sent.
+         */
+        sentInvitationEmail: boolean
+
+        /**
+         * The URL that the invited user can visit to accept or reject the invitation.
+         */
+        invitationURL: string
+    }
+
+    /**
      * A user event.
      */
     export enum UserEvent {
@@ -5373,7 +6220,7 @@ declare namespace GQL {
      */
     export interface IConfigurationMutationGroupInput {
         /**
-         * The subject whose configuration to mutate (org, user, etc.).
+         * The subject whose configuration to mutate (organization, user, etc.).
          */
         subject: ID
 
@@ -5399,10 +6246,14 @@ declare namespace GQL {
         __typename: 'ConfigurationMutation'
 
         /**
-         * Perform a raw configuration update. Use one of the other fields on this
-         * type instead if possible.
+         * Edit a single property in the configuration object.
          */
-        updateConfiguration: IUpdateConfigurationPayload | null
+        editConfiguration: IUpdateConfigurationPayload | null
+
+        /**
+         * Overwrite the contents to the new contents provided.
+         */
+        overwriteConfiguration: IUpdateConfigurationPayload | null
 
         /**
          * Create a saved query.
@@ -5418,10 +6269,22 @@ declare namespace GQL {
          * Delete the saved query with the given ID in the configuration.
          */
         deleteSavedQuery: IEmptyResponse | null
+
+        /**
+         * Update an extension's configuration. Exactly 1 of the extension and extensionID parameters must be non-null.
+         */
+        updateExtension: IUpdateExtensionConfigurationResult
     }
 
-    export interface IUpdateConfigurationOnConfigurationMutationArguments {
-        input: IUpdateConfigurationInput
+    export interface IEditConfigurationOnConfigurationMutationArguments {
+        /**
+         * The configuration edit to apply.
+         */
+        edit: IConfigurationEdit
+    }
+
+    export interface IOverwriteConfigurationOnConfigurationMutationArguments {
+        contents?: string | null
     }
 
     export interface ICreateSavedQueryOnConfigurationMutationArguments {
@@ -5479,16 +6342,43 @@ declare namespace GQL {
         disableSubscriptionNotifications?: boolean | null
     }
 
-    /**
-     * Input to ConfigurationMutation.updateConfiguration.
-     */
-    export interface IUpdateConfigurationInput {
+    export interface IUpdateExtensionOnConfigurationMutationArguments {
         /**
-         *  The name of the property to update.
+         * The GraphQL API ID of the extension to configure.
+         */
+        extension?: ID | null
+
+        /**
+         * The extension ID of the extension to configure.
+         */
+        extensionID?: string | null
+
+        /**
+         * The new enablement state (true to enable, false to disable, null to leave unchanged).
+         */
+        enabled?: boolean | null
+
+        /**
+         * Remove the extension from settings.
+         */
+        remove?: boolean | null
+
+        /**
+         * Edit a (nested) property's value.
+         */
+        edit?: IConfigurationEdit | null
+    }
+
+    /**
+     * An edit to a (nested) configuration property's value.
+     */
+    export interface IConfigurationEdit {
+        /**
+         *  The key path of the property to update.
          *
          *  Inserting into an existing array is not yet supported.
          */
-        property: string
+        keyPath: IKeyPathSegment[]
 
         /**
          *  The new JSON-encoded value to insert. If the field's value is not set, the property is removed. (This is
@@ -5501,6 +6391,24 @@ declare namespace GQL {
     }
 
     /**
+     *  A segment of a key path that locates a nested JSON value in a root JSON value. Exactly one field in each
+     *  KeyPathSegment must be non-null.
+     *
+     *  For example, in {"a": [0, {"b": 3}]}, the value 3 is located at the key path ["a", 1, "b"].
+     */
+    export interface IKeyPathSegment {
+        /**
+         * The name of the property in the object at this location to descend into.
+         */
+        property?: string | null
+
+        /**
+         * The index of the array at this location to descend into.
+         */
+        index?: number | null
+    }
+
+    /**
      * The payload for ConfigurationMutation.updateConfiguration.
      */
     export interface IUpdateConfigurationPayload {
@@ -5510,6 +6418,21 @@ declare namespace GQL {
          * An empty response.
          */
         empty: IEmptyResponse | null
+    }
+
+    /**
+     * The payload for ConfigurationMutation.updateExtension.
+     */
+    export interface IUpdateExtensionConfigurationResult {
+        __typename: 'UpdateExtensionConfigurationResult'
+
+        /**
+         *  The merged settings for the extension after the update was applied.
+         *
+         *  NOTE: This is currently only set by the ConfigurationMutation.updateExtension mutation when providing the
+         *  edit parameter.
+         */
+        mergedSettings: any | null
     }
 
     /**
@@ -5567,6 +6490,168 @@ declare namespace GQL {
     }
 
     /**
+     * Mutations for discussions.
+     */
+    export interface IDiscussionsMutation {
+        __typename: 'DiscussionsMutation'
+
+        /**
+         * Creates a new thread. Returns the new thread.
+         */
+        createThread: IDiscussionThread
+
+        /**
+         * Updates an existing thread. Returns the updated thread.
+         */
+        updateThread: IDiscussionThread
+
+        /**
+         * Adds a new comment to a thread. Returns the updated thread.
+         */
+        addCommentToThread: IDiscussionThread
+    }
+
+    export interface ICreateThreadOnDiscussionsMutationArguments {
+        input: IDiscussionThreadCreateInput
+    }
+
+    export interface IUpdateThreadOnDiscussionsMutationArguments {
+        input: IDiscussionThreadUpdateInput
+    }
+
+    export interface IAddCommentToThreadOnDiscussionsMutationArguments {
+        threadID: ID
+        contents: string
+    }
+
+    /**
+     * Describes the creation of a new thread around some target (e.g. a file in a repo).
+     */
+    export interface IDiscussionThreadCreateInput {
+        /**
+         * The title of the thread's first comment (i.e. the threads title).
+         */
+        title: string
+
+        /**
+         * The contents of the thread's first comment (i.e. the threads comment).
+         */
+        contents: string
+
+        /**
+         * The target repo of this discussion thread. This is nullable so that in
+         * the future more target types may be added.
+         */
+        targetRepo?: IDiscussionThreadTargetRepoInput | null
+    }
+
+    /**
+     *  A discussion thread that is centered around:
+     *
+     *  - A repository.
+     *  - A directory inside a repository.
+     *  - A file inside a repository.
+     *  - A selection inside a file inside a repository.
+     *
+     */
+    export interface IDiscussionThreadTargetRepoInput {
+        /**
+         * The repository in which the thread was created.
+         */
+        repository: ID
+
+        /**
+         * The path (relative to the repository root) of the file or directory that
+         * the thread is referencing, if any. If the path is null, the thread is not
+         * talking about a specific path but rather just the repository generally.
+         */
+        path?: string | null
+
+        /**
+         * The branch (but not exact revision) that the thread was referencing, if
+         * any.
+         */
+        branch?: string | null
+
+        /**
+         * The exact revision that the thread was referencing, if any.
+         */
+        revision?: string | null
+
+        /**
+         * The selection that the thread was referencing, if any.
+         */
+        selection?: IDiscussionThreadTargetRepoSelectionInput | null
+    }
+
+    /**
+     * A selection within a file.
+     */
+    export interface IDiscussionThreadTargetRepoSelectionInput {
+        /**
+         * The line that the selection started on (zero-based, inclusive).
+         */
+        startLine: number
+
+        /**
+         * The character (not byte) of the start line that the selection began on (zero-based, inclusive).
+         */
+        startCharacter: number
+
+        /**
+         * The line that the selection ends on (zero-based, inclusive).
+         */
+        endLine: number
+
+        /**
+         * The character (not byte) of the end line that the selection ended on (zero-based, exclusive).
+         */
+        endCharacter: number
+
+        /**
+         *  The literal textual (UTF-8) lines before the line the selection started
+         *  on.
+         *
+         *  This is an arbitrary number of lines, and may be zero lines, but typically 3.
+         */
+        linesBefore: string
+
+        /**
+         * The literal textual (UTF-8) lines of the selection. i.e. all lines
+         * between and including startLine and endLine.
+         */
+        lines: string
+
+        /**
+         *  The literal textual (UTF-8) lines after the line the selection ended on.
+         *
+         *  This is an arbitrary number of lines, and may be zero lines, but typically 3.
+         */
+        linesAfter: string
+    }
+
+    /**
+     * Describes an update mutation to an existing thread.
+     */
+    export interface IDiscussionThreadUpdateInput {
+        /**
+         * The ID of the thread to update.
+         */
+        ThreadID: ID
+
+        /**
+         * When non-null, indicates that the thread should be archived.
+         */
+        Archive?: boolean | null
+
+        /**
+         * When non-null, indicates that the thread should be deleted. Only admins
+         * can perform this action.
+         */
+        Delete?: boolean | null
+    }
+
+    /**
      * Input for a user satisfaction (NPS) survey submission.
      */
     export interface ISurveySubmissionInput {
@@ -5590,6 +6675,92 @@ declare namespace GQL {
          * The answer to "What can Sourcegraph do to provide a better product"
          */
         better?: string | null
+    }
+
+    /**
+     * Mutations for the extension registry.
+     */
+    export interface IExtensionRegistryMutation {
+        __typename: 'ExtensionRegistryMutation'
+
+        /**
+         * Create a new extension in the extension registry.
+         */
+        createExtension: IExtensionRegistryCreateExtensionResult
+
+        /**
+         *  Update an extension in the extension registry.
+         *
+         *  Only authorized extension publishers may perform this mutation.
+         */
+        updateExtension: IExtensionRegistryUpdateExtensionResult
+
+        /**
+         *  Delete an extension from the extension registry.
+         *
+         *  Only authorized extension publishers may perform this mutation.
+         */
+        deleteExtension: IEmptyResponse
+    }
+
+    export interface ICreateExtensionOnExtensionRegistryMutationArguments {
+        /**
+         * The ID of the extension's publisher (a user or organization).
+         */
+        publisher: ID
+
+        /**
+         * The name of the extension.
+         */
+        name: string
+    }
+
+    export interface IUpdateExtensionOnExtensionRegistryMutationArguments {
+        /**
+         * The extension to update.
+         */
+        extension: ID
+
+        /**
+         * The new name for the extension, or null to leave unchanged.
+         */
+        name?: string | null
+
+        /**
+         * The new manifest for the extension, or null to leave unchanged.
+         */
+        manifest?: string | null
+    }
+
+    export interface IDeleteExtensionOnExtensionRegistryMutationArguments {
+        /**
+         * The ID of the extension to delete.
+         */
+        extension: ID
+    }
+
+    /**
+     * The result of Mutation.extensionRegistry.createExtension.
+     */
+    export interface IExtensionRegistryCreateExtensionResult {
+        __typename: 'ExtensionRegistryCreateExtensionResult'
+
+        /**
+         * The newly created extension.
+         */
+        extension: IRegistryExtension
+    }
+
+    /**
+     * The result of Mutation.extensionRegistry.updateExtension.
+     */
+    export interface IExtensionRegistryUpdateExtensionResult {
+        __typename: 'ExtensionRegistryUpdateExtensionResult'
+
+        /**
+         * The newly updated extension.
+         */
+        extension: IRegistryExtension
     }
 
     /**
