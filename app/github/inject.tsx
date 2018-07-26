@@ -37,7 +37,7 @@ import {
     repositoryFileTreeEnabled,
     sourcegraphUrl,
 } from '../util/context'
-import * as featureFlags from '../util/featureFlags'
+import {featureFlags} from '../util/featureFlags'
 import { blobDOMFunctions, diffDomFunctions, searchCodeSnippetDOMFunctions } from './dom_functions'
 import { initSearch } from './search'
 import {

@@ -16,6 +16,7 @@ import {
     setSourcegraphUrl,
     setUseCXP,
 } from '../../app/util/context'
+import { featureFlags } from '../../app/util/featureFlags'
 import { getURL } from '../../extension/extension'
 import * as runtime from '../../extension/runtime'
 import storage from '../../extension/storage'
@@ -119,6 +120,7 @@ function injectApplication(): void {
     document.addEventListener('sourcegraph:storage-init', () => {
         storage.getSync(handleGetStorage)
     })
+    ;(window as any).sourcegraphFeatureFlags = featureFlags
 }
 
 if (document.readyState === 'complete' || document.readyState === 'interactive') {

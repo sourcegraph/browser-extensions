@@ -2,7 +2,7 @@ import * as OmniCLI from 'omnicli'
 
 import storage from '../../extension/storage'
 import { featureFlagDefaults, FeatureFlags } from '../../extension/types'
-import * as featureFlags from '../util/featureFlags'
+import { featureFlags } from '../util/featureFlags'
 
 const keyIsFeatureFlag = (key: string): key is keyof FeatureFlags => featureFlagDefaults[key] !== undefined
 

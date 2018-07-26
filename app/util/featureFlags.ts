@@ -15,13 +15,23 @@ interface FeatureFlagsStorage {
      * Disable a feature flag.
      */
     disable<K extends keyof FeatureFlags>(key: K): Promise<boolean>
+    /**
+     * Set a feature flag.
+     */
+    set<K extends keyof FeatureFlags>(key: K, enabled: boolean): Promise<boolean>
     /** Toggle a feature flag. */
     toggle<K extends keyof FeatureFlags>(key: K): Promise<boolean>
 }
 
-const createFeatureFlagStorage = ({ get, set }: Pick<FeatureFlagsStorage, 'get' | 'set'>): FeatureFlagsStorage => ({
-    get,
+interface FeatureFlagUtilities {
+    get<K extends keyof FeatureFlags>(key: K): Promise<boolean>
+    set<K extends keyof FeatureFlags>(key: K, enabled: boolean): Promise<boolean>
+}
+
+const createFeatureFlagStorage = ({ get, set }: FeatureFlagUtilities): FeatureFlagsStorage => ({
     set,
+    enable: key => set(key, true),
+    disable: key => set(key, false),
     isEnabled<K extends keyof FeatureFlags>(key: K): Promise<boolean> {
         return get(key).then(val => !!val)
     },
@@ -48,7 +58,7 @@ const browserExtensionFeatureFlags = createFeatureFlagStorage({
 })
 
 const inPageFeatureFlags = createFeatureFlagStorage({
-    get: key => new Promise(resolve => resolve(localStorage.getItem(key))),
+    get: key => new Promise(resolve => resolve(!!localStorage.getItem(key))),
     set: (key, val) =>
         new Promise(resolve => {
             localStorage.setItem(key, val.toString())
