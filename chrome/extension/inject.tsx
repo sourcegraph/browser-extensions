@@ -120,6 +120,7 @@ function injectApplication(): void {
     document.addEventListener('sourcegraph:storage-init', () => {
         storage.getSync(handleGetStorage)
     })
+    // Allow users to set this via the console.
     ;(window as any).sourcegraphFeatureFlags = featureFlags
 }
 
