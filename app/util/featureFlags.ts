@@ -66,4 +66,4 @@ const inPageFeatureFlags = createFeatureFlagStorage({
         }),
 })
 
-export const featureFlags = isInPage ? inPageFeatureFlags : browserExtensionFeatureFlags
+export const featureFlags: FeatureFlagsStorage = isInPage ? inPageFeatureFlags : browserExtensionFeatureFlags

@@ -115,16 +115,18 @@ function monitorFileContainers(
             continue
         }
 
-        const observer = new MutationObserver((records: MutationRecord[]): void => {
-            for (const rec of records) {
-                for (const n of rec.addedNodes) {
-                    const maybeTable = n as HTMLElement
-                    if (maybeTable.tagName === 'TABLE') {
-                        handler(file, maybeTable as HTMLTableElement, true)
+        const observer = new MutationObserver(
+            (records: MutationRecord[]): void => {
+                for (const rec of records) {
+                    for (const n of rec.addedNodes) {
+                        const maybeTable = n as HTMLElement
+                        if (maybeTable.tagName === 'TABLE') {
+                            handler(file, maybeTable as HTMLTableElement, true)
+                        }
                     }
                 }
             }
-        })
+        )
 
         observer.observe(container, { childList: true })
 
