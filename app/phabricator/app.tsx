@@ -1,6 +1,7 @@
+import { injectCodeIntelligence } from '../code_intelligence/inject'
 import { featureFlags } from '../util/featureFlags'
-import { injectPhabricatorBlobAnnotators } from './inject'
-import { injectPhabricatorBlobAnnotators as injectPhabricatorBlobAnnotatorsOld } from './inject_old'
+import { phabCodeViews } from './code_views'
+import { injectPhabricatorBlobAnnotators } from './inject_old'
 import { expanderListen, javelinPierce, metaClickOverride, setupPageLoadListener } from './util'
 
 // This is injection for the chrome extension.
@@ -22,12 +23,12 @@ export function injectPhabricatorApplication(): void {
 }
 
 function injectModules(): void {
-    featureFlags
-        .isEnabled('newTooltips')
-        .then(
-            enabled =>
-                enabled
-                    ? injectPhabricatorBlobAnnotators().catch(e => console.error(e))
-                    : injectPhabricatorBlobAnnotatorsOld().catch(e => console.error(e))
-        )
+    featureFlags.isEnabled('newTooltips').then(enabled => {
+        if (enabled) {
+            injectCodeIntelligence(phabCodeViews)
+            return
+        }
+
+        injectPhabricatorBlobAnnotators().catch(e => console.error(e))
+    })
 }

@@ -1,5 +1,7 @@
 import {
+    ContextResolver,
     createHoverifier,
+    DiffPart,
     DOMFunctions,
     findPositionsFromEvents,
     Hoverifier,
@@ -12,14 +14,12 @@ import { HoverMerged } from '@sourcegraph/codeintellify/lib/types'
 import { toPrettyBlobURL } from '@sourcegraph/codeintellify/lib/url'
 import * as React from 'react'
 import { render } from 'react-dom'
-import { Observable, of, Subject } from 'rxjs'
+import { Observable, of, Subject, Subscription } from 'rxjs'
 import { filter, map, withLatestFrom } from 'rxjs/operators'
 
 import { createJumpURLFetcher } from '../backend/lsp'
 import { fetchHover } from '../backend/lsp'
 import { eventLogger, sourcegraphUrl } from '../util/context'
-import { diffDomFunctions } from './dom_functions'
-import { getPhabricatorState } from './util'
 
 function createCodeIntelligenceContainer(options?: { repoPath: string }): { hoverifier: Hoverifier } {
     /** Emits when the go to definition button was clicked */
@@ -100,45 +100,20 @@ function createCodeIntelligenceContainer(options?: { repoPath: string }): { hove
     return { hoverifier }
 }
 
-// function createBlobAnnotatorMount(
-//     fileContainer: HTMLElement,
-//     actionLinks: Element,
-//     isBase: boolean
-// ): HTMLElement | null {
-//     const className = 'sourcegraph-app-annotator' + (isBase ? '-base' : '')
-//     const existingMount = fileContainer.querySelector('.' + className)
-//     if (existingMount) {
-//         // Make this function idempotent; no need to create a mount twice.
-//         return existingMount as HTMLElement
-//     }
-
-//     const mountEl = document.createElement('div')
-//     mountEl.style.display = 'inline-block'
-//     mountEl.className = className
-
-//     actionLinks.appendChild(mountEl)
-//     return mountEl
-// }
-
-interface CodeViewInfo {
+export interface CodeViewInfo {
     selector: string
     dom: DOMFunctions
+    getToolbarMount: (codeView: HTMLElement, part?: DiffPart) => HTMLElement
+    createContextResolver(codeView: HTMLElement): Observable<ContextResolver>
 }
 
-const codeViewSelectors: CodeViewInfo[] = [
-    {
-        selector: '.differential-changeset',
-        dom: diffDomFunctions,
-    },
-]
-
-interface PhabricatorCodeViews extends CodeViewInfo {
+export interface CodeView extends CodeViewInfo {
     codeView: HTMLElement
 }
 
-function findCodeViews(): Observable<PhabricatorCodeViews> {
-    return new Observable<PhabricatorCodeViews>(observer => {
-        for (const info of codeViewSelectors) {
+function findCodeViews(codeViewInfos: CodeViewInfo[]): Observable<CodeView> {
+    return new Observable<CodeView>(observer => {
+        for (const info of codeViewInfos) {
             const elements = document.querySelectorAll<HTMLElement>(info.selector)
             for (const codeView of elements) {
                 observer.next({ ...info, codeView })
@@ -147,29 +122,16 @@ function findCodeViews(): Observable<PhabricatorCodeViews> {
     })
 }
 
-/**
- * injectPhabricatorBlobAnnotators finds file blocks on the dom that sould be annotated, and adds blob annotators to them.
- */
-export function injectPhabricatorBlobAnnotators(): Promise<void> {
-    return getPhabricatorState(window.location).then(state => {
-        if (!state) {
-            return
-        }
+export function injectCodeIntelligence(codeViewInfos: CodeViewInfo[]): Subscription {
+    const { hoverifier } = createCodeIntelligenceContainer()
 
-        const { hoverifier } = createCodeIntelligenceContainer()
-        console.log(hoverifier)
-
-        findCodeViews().subscribe(({ codeView, dom }) => {
+    return findCodeViews(codeViewInfos).subscribe(({ codeView, dom, createContextResolver }) =>
+        createContextResolver(codeView).subscribe(resolveContext =>
             hoverifier.hoverify({
                 dom,
                 positionEvents: of(codeView).pipe(findPositionsFromEvents(dom)),
-                resolveContext: () => ({
-                    repoPath,
-                    filePath: filePath!,
-                    rev: rev || commitID,
-                    commitID,
-                }),
+                resolveContext,
             })
-        })
-    })
+        )
+    )
 }
