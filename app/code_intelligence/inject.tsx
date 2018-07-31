@@ -105,6 +105,7 @@ export interface CodeViewInfo {
     dom: DOMFunctions
     getToolbarMount: (codeView: HTMLElement, part?: DiffPart) => HTMLElement
     createContextResolver(codeView: HTMLElement): Observable<ContextResolver>
+    adjustPositions?: (codeView: HTMLElement, position: Position) => Position
 }
 
 export interface CodeView extends CodeViewInfo {

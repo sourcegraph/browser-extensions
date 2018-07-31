@@ -5,14 +5,6 @@ import { DifferentialState, PhabricatorMode } from '.'
 import { AbsoluteRepoFile, RevSpec } from '../repo'
 import { getFilepathFromFile, getPhabricatorState } from './util'
 
-export const getDifferentialRevSpe1 = (): Observable<AbsoluteRepoFile & RevSpec> =>
-    of({
-        repoPath: '',
-        commitID: '',
-        filePath: '',
-        rev: '',
-    })
-
 export const createDifferentialContextResolver = (codeView: HTMLElement): Observable<ContextResolver> =>
     from(getPhabricatorState(window.location)).pipe(
         filter(state => state !== null && state.mode === PhabricatorMode.Differential),
