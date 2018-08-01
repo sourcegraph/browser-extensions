@@ -16,6 +16,7 @@ function injectModules(): void {
     document.body.appendChild(extensionMarker)
 
     featureFlags.isEnabled('newTooltips').then(enabled => {
+        console.log('isEnebled', enabled)
         if (enabled) {
             injectCodeIntelligence(phabCodeViews)
             return

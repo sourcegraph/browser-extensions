@@ -1,8 +1,8 @@
 import { ContextResolver, HoveredToken, HoveredTokenContext } from '@sourcegraph/codeintellify'
-import { from, Observable, of } from 'rxjs'
-import { filter, map } from 'rxjs/operators'
+import { from, Observable, zip } from 'rxjs'
+import { filter, map, switchMap } from 'rxjs/operators'
 import { DifferentialState, PhabricatorMode } from '.'
-import { AbsoluteRepoFile, RevSpec } from '../repo'
+import { resolveDiffRev } from './backend'
 import { getFilepathFromFile, getPhabricatorState } from './util'
 
 export const createDifferentialContextResolver = (codeView: HTMLElement): Observable<ContextResolver> =>
@@ -16,9 +16,34 @@ export const createDifferentialContextResolver = (codeView: HTMLElement): Observ
                 ...state,
                 filePath,
                 baseFilePath,
-                baseCommitID: '',
-                headCommitID: '',
             }
+        }),
+        switchMap(info => {
+            const resolveBaseCommitID = resolveDiffRev({
+                repoPath: info.baseRepoPath,
+                differentialID: info.differentialID,
+                diffID: (info.leftDiffID || info.diffID)!,
+                leftDiffID: info.leftDiffID,
+                useDiffForBase: Boolean(info.leftDiffID), // if ?vs and base is not `on` i.e. the initial commit)
+                useBaseForDiff: false,
+                filePath: info.baseFilePath || info.filePath,
+                isBase: true,
+            }).pipe(map(({ commitID }) => ({ baseCommitID: commitID })))
+
+            const resolveHeadCommitID = resolveDiffRev({
+                repoPath: info.headRepoPath,
+                differentialID: info.differentialID,
+                diffID: info.diffID!,
+                leftDiffID: info.leftDiffID,
+                useDiffForBase: false,
+                useBaseForDiff: false,
+                filePath: info.filePath,
+                isBase: false,
+            }).pipe(map(({ commitID }) => ({ headCommitID: commitID })))
+
+            return zip(resolveBaseCommitID, resolveHeadCommitID).pipe(
+                map(([{ baseCommitID }, { headCommitID }]) => ({ baseCommitID, headCommitID, ...info }))
+            )
         }),
         map(info => (token: HoveredToken): HoveredTokenContext => ({
             repoPath: token.part === 'base' ? info.baseRepoPath : info.headRepoPath,

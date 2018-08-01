@@ -8,7 +8,7 @@ export const diffDomFunctions: DOMFunctions = {
         if (target.tagName === 'TH' || target.classList.contains('copy')) {
             return null
         }
-
+        console.log(target, target.closest('td'))
         return target.closest('td')
     },
     getCodeElementFromLineNumber: (codeView, line, part) => {

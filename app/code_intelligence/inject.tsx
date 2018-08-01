@@ -114,6 +114,7 @@ export interface CodeView extends CodeViewInfo {
 
 function findCodeViews(codeViewInfos: CodeViewInfo[]): Observable<CodeView> {
     return new Observable<CodeView>(observer => {
+        console.log(codeViewInfos)
         for (const info of codeViewInfos) {
             const elements = document.querySelectorAll<HTMLElement>(info.selector)
             for (const codeView of elements) {

@@ -23,12 +23,15 @@ export function injectPhabricatorApplication(): void {
 }
 
 function injectModules(): void {
-    featureFlags.isEnabled('newTooltips').then(enabled => {
-        if (enabled) {
-            injectCodeIntelligence(phabCodeViews)
-            return
-        }
+    featureFlags
+        .isEnabled('newTooltips')
+        .then(enabled => {
+            if (enabled) {
+                injectCodeIntelligence(phabCodeViews)
+                return
+            }
 
-        injectPhabricatorBlobAnnotators().catch(e => console.error(e))
-    })
+            injectPhabricatorBlobAnnotators().catch(e => console.error(e))
+        })
+        .catch(err => console.error('could not get feature flag', err))
 }
