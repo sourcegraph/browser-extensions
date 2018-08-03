@@ -5,6 +5,7 @@
   },
   "scripts": {
     "dev": "NODE_ENV=development ts-node scripts/dev",
+    "dev:no-reload": "AUTO_RELOAD=false npm run dev",
     "dev:firefox": "web-ext run --source-dir ./build/firefox",
     "build": "NODE_ENV=production ts-node scripts/build",
     "graphql": "get-graphql-schema http://localhost:3080/.api/graphql --json | gql2ts -o app/gqlschema.d.ts",
