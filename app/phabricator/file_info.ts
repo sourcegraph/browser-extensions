@@ -1,6 +1,6 @@
 import { ContextResolver, HoveredToken, HoveredTokenContext } from '@sourcegraph/codeintellify'
 import { from, Observable, zip } from 'rxjs'
-import { filter, map, switchMap } from 'rxjs/operators'
+import { catchError, filter, map, switchMap } from 'rxjs/operators'
 import { DifferentialState, PhabricatorMode } from '.'
 import { resolveDiffRev } from './backend'
 import { getFilepathFromFile, getPhabricatorState } from './util'
@@ -28,7 +28,12 @@ export const createDifferentialContextResolver = (codeView: HTMLElement): Observ
                 useBaseForDiff: false,
                 filePath: info.baseFilePath || info.filePath,
                 isBase: true,
-            }).pipe(map(({ commitID }) => ({ baseCommitID: commitID })))
+            }).pipe(
+                map(({ commitID }) => ({ baseCommitID: commitID })),
+                catchError(err => {
+                    throw err
+                })
+            )
 
             const resolveHeadCommitID = resolveDiffRev({
                 repoPath: info.headRepoPath,
@@ -39,10 +44,18 @@ export const createDifferentialContextResolver = (codeView: HTMLElement): Observ
                 useBaseForDiff: false,
                 filePath: info.filePath,
                 isBase: false,
-            }).pipe(map(({ commitID }) => ({ headCommitID: commitID })))
+            }).pipe(
+                map(({ commitID }) => ({ headCommitID: commitID })),
+                catchError(err => {
+                    throw err
+                })
+            )
 
             return zip(resolveBaseCommitID, resolveHeadCommitID).pipe(
-                map(([{ baseCommitID }, { headCommitID }]) => ({ baseCommitID, headCommitID, ...info }))
+                map(([{ baseCommitID }, { headCommitID }]) => {
+                    console.log({ baseCommitID, headCommitID, ...info })
+                    return { baseCommitID, headCommitID, ...info }
+                })
             )
         }),
         map(info => (token: HoveredToken): HoveredTokenContext => ({

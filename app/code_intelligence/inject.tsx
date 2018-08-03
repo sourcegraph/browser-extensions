@@ -114,7 +114,6 @@ export interface CodeView extends CodeViewInfo {
 
 function findCodeViews(codeViewInfos: CodeViewInfo[]): Observable<CodeView> {
     return new Observable<CodeView>(observer => {
-        console.log(codeViewInfos)
         for (const info of codeViewInfos) {
             const elements = document.querySelectorAll<HTMLElement>(info.selector)
             for (const codeView of elements) {
@@ -128,12 +127,13 @@ export function injectCodeIntelligence(codeViewInfos: CodeViewInfo[]): Subscript
     const { hoverifier } = createCodeIntelligenceContainer()
 
     return findCodeViews(codeViewInfos).subscribe(({ codeView, dom, createContextResolver }) =>
-        createContextResolver(codeView).subscribe(resolveContext =>
+        createContextResolver(codeView).subscribe(resolveContext => {
+            console.log('built resolveContext')
             hoverifier.hoverify({
                 dom,
                 positionEvents: of(codeView).pipe(findPositionsFromEvents(dom)),
                 resolveContext,
             })
-        )
+        })
     )
 }
