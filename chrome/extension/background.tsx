@@ -4,9 +4,9 @@ import '../../app/util/polyfill'
 
 import { without } from 'lodash'
 
+import { ExtensionPlatform } from '@sourcegraph/extensions-client-common/lib/schema/extension.schema'
 import { ajax } from 'rxjs/ajax'
 import initializeCli from '../../app/cli'
-import { ExtensionPlatform } from '../../app/components/CXPCommands'
 import { setServerUrls, setSourcegraphUrl } from '../../app/util/context'
 import * as browserAction from '../../extension/browserAction'
 import * as omnibox from '../../extension/omnibox'

@@ -45,9 +45,10 @@ import {
 import { eventLogger, getPathExtension } from '../util/context'
 import { parseHash } from '../util/url'
 import { fetchBlobContentLines } from '../repo/backend'
-import { ContributedActions, ContributableMenu, Extensions, Contributions } from './CXPCommands'
+import { ContributedActions, Extensions, Contributions } from './CXPCommands'
 import { Controller } from 'cxp/lib/environment/controller'
 import { CXPExtensionWithManifest, CXP_CONTROLLER } from '../backend/cxp'
+import { ContributableMenu } from 'cxp/lib/protocol'
 
 export interface ButtonProps {
     className: string

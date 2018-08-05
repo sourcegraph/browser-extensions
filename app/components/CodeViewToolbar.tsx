@@ -1,17 +1,12 @@
 import * as React from 'react'
 
+import { ContributableMenu } from 'cxp/lib/protocol'
 import { Subscription } from 'rxjs'
 import storage from '../../extension/storage'
 import { CXP_CONTROLLER } from '../backend/cxp'
 import { setServerUrls } from '../util/context'
 import { CodeIntelStatusIndicator } from './CodeIntelStatusIndicator'
-import {
-    ContributableMenu,
-    ContributedActions,
-    Contributions,
-    CXPControllerProps,
-    ExtensionsProps,
-} from './CXPCommands'
+import { ContributedActions, Contributions, CXPControllerProps, ExtensionsProps } from './CXPCommands'
 import { OpenOnSourcegraph } from './OpenOnSourcegraph'
 
 export interface ButtonProps {

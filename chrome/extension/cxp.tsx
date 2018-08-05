@@ -46,7 +46,7 @@ class BrowserSettingsEditor extends React.Component<{}, State> {
     public render(): JSX.Element | null {
         return (
             <div className="options__section">
-                <div className="options__section-header">Sourcegraph settings (e.g. for CXP extensions)</div>
+                <div className="options__section-header">Client settings</div>
                 <div className="options__section-contents">
                     <FormGroup>
                         <Label className="options__input">

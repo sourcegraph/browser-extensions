@@ -1,6 +1,6 @@
 import { Controller } from 'cxp/lib/environment/controller'
 import { Extension, ExtensionSettings } from 'cxp/lib/environment/extension'
-import { ExecuteCommandParams } from 'cxp/lib/protocol'
+import { ContributableMenu, ExecuteCommandParams } from 'cxp/lib/protocol'
 import * as React from 'react'
 import { from, Subject, Subscription } from 'rxjs'
 import { catchError, map, mapTo, mergeMap, startWith } from 'rxjs/operators'
@@ -132,10 +132,6 @@ interface CommandContributionSettingsAction {
     path: (string | number)[]
     cycleValues?: any[]
     prompt?: string
-}
-
-export enum ContributableMenu {
-    EditorTitle = 'editor/title',
 }
 
 interface MenuContributions extends Record<ContributableMenu, MenuItemContribution[]> {}
