@@ -88,7 +88,9 @@
   },
   "dependencies": {
     "@sourcegraph/codeintellify": "^3.6.4",
-    "@sourcegraph/react-loading-spinner": "0.0.6",
+    "@sourcegraph/extensions-client-common": "",
+    "@sourcegraph/icons": "^1.15.0",
+    "@sqs/jsonc-parser": "^1.0.3",
     "@types/filesystem": "0.0.28",
     "@types/react-dom": "16.0.7",
     "@types/uuid": "3.4.3",
@@ -102,7 +104,6 @@
     "highlight.js": "^9.12.0",
     "intersection-observer": "^0.5.0",
     "javascript-typescript-langserver": "2.5.4",
-    "jsonc-parser": "^2.0.1",
     "lodash": "^4.17.10",
     "marked": "^0.4.0",
     "mdi-react": "^4.0.0",

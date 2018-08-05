@@ -1,3 +1,4 @@
+import * as JSONC from '@sqs/jsonc-parser'
 import { ClientOptions, ClientState } from 'cxp/lib/client/client'
 import { Controller } from 'cxp/lib/environment/controller'
 import { Environment } from 'cxp/lib/environment/environment'
@@ -7,7 +8,6 @@ import { BrowserConsoleTracer, Trace } from 'cxp/lib/jsonrpc2/trace'
 import { createWebSocketMessageTransports } from 'cxp/lib/jsonrpc2/transports/browserWebSocket'
 import { TextDocumentDecoration } from 'cxp/lib/protocol'
 import deepmerge from 'deepmerge'
-import * as JSONC from 'jsonc-parser'
 import { cloneDeep, fromPairs, get, mapValues, set, toPairs } from 'lodash'
 import { merge } from 'rxjs'
 import { switchMap } from 'rxjs/operators'
@@ -17,10 +17,27 @@ import { ConfiguredExtension, Extensions } from '../components/CXPCommands'
 import { getContext } from './context'
 import { isErrorLike } from './errors'
 import { SourcegraphExtension } from './extension.schema'
+import { createExtensionsContextController } from './extensions'
 import { queryGraphQL } from './graphql'
 import { createPortMessageTransports } from './PortMessageTransports'
 
+// needs:
+// - Root: github.com/gorilla/mux
+// - File: mux.go
 export const CXP_CONTROLLER = createController()
+
+// needs: ?
+const CXP_EXTENSIONS_CONTEXT_CONTROLLER = createExtensionsContextController()
+
+CXP_EXTENSIONS_CONTEXT_CONTROLLER.viewerConfiguredExtensions.subscribe(
+    configuredExtension => {
+        console.log('hey', configuredExtension)
+        // CXP_CONTROLLER.setEnvironment(
+    },
+    err => {
+        console.error('Error fetching viewer configured extensions via GraphQL: %O', err)
+    }
+)
 
 /**
  * Filter the environment to omit extensions that should not be activated (based on their manifest's
@@ -373,11 +390,7 @@ const filterValues = (obj: any, f: (v: any) => any): any => fromPairs(toPairs(ob
 
 const fetchEnabledExtensionsFromStorage: Promise<{ [id: string]: CXPExtension }> = new Promise((resolve, reject) => {
     storage.getSync(storageItems => {
-        const settingsByID: { [id: string]: any } = get(
-            JSONC.parse(storageItems.clientSettings),
-            'extensions',
-            {}
-        )
+        const settingsByID: { [id: string]: any } = get(JSONC.parse(storageItems.clientSettings), 'extensions', {})
         const extensions = mapValues(settingsByID, (ext, id) => ({ settings: { merged: ext }, id }))
         resolve(filterValues(extensions, isEnabled))
     })
