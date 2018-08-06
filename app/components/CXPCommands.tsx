@@ -1,10 +1,11 @@
 import { Controller } from 'cxp/lib/environment/controller'
-import { Extension, ExtensionSettings } from 'cxp/lib/environment/extension'
+import { ExtensionSettings } from 'cxp/lib/environment/extension'
 import { ContributableMenu, ExecuteCommandParams } from 'cxp/lib/protocol'
 import * as React from 'react'
 import { from, Subject, Subscription } from 'rxjs'
 import { catchError, map, mapTo, mergeMap, startWith } from 'rxjs/operators'
 import { Key } from 'ts-key-enum'
+import { CXPExtensionWithManifest } from '../backend/cxp'
 import { asError, ErrorLike } from '../backend/errors'
 
 /**
@@ -98,14 +99,6 @@ export interface ExecTarget {
 }
 
 /**
- * Adds the manifest to CXP extensions in the CXP environment, so we can consult it in the createMessageTransports
- * callback (to know how to communicate with or run the extension).
- */
-export interface CXPExtensionWithManifest extends Extension {
-    manifest: ConfiguredExtension['manifest']
-}
-
-/**
  * React props or state containing the CXP controller. There should be only a single CXP controller for the whole
  * application.
  */
@@ -157,17 +150,6 @@ export interface ConfiguredExtension extends Pick<GQL.IConfiguredExtension, 'ext
 
 /** The extensions in use. */
 export type Extensions = ConfiguredExtension[]
-
-/** Extended by React prop types that carry extensions. */
-export interface ExtensionsProps {
-    /** The enabled extensions. */
-    extensions: Extensions
-}
-
-/** Extended by React prop types for components that need to signal a change to extensions. */
-export interface ExtensionsChangeProps {
-    onExtensionsChange: (enabledExtensions: Extensions) => void
-}
 
 interface Props extends CXPControllerProps {
     contributions: Contributions

@@ -1,5 +1,6 @@
 import { SourcegraphExtension } from '@sourcegraph/extensions-client-common/lib/schema/extension.schema'
-import * as JSONC from '@sqs/jsonc-parser'
+import { applyEdits } from '@sqs/jsonc-parser'
+import { setProperty } from '@sqs/jsonc-parser/lib/edit'
 import { ClientOptions, ClientState } from 'cxp/lib/client/client'
 import { Controller } from 'cxp/lib/environment/controller'
 import { Environment } from 'cxp/lib/environment/environment'
@@ -8,17 +9,12 @@ import { MessageTransports } from 'cxp/lib/jsonrpc2/connection'
 import { BrowserConsoleTracer, Trace } from 'cxp/lib/jsonrpc2/trace'
 import { createWebSocketMessageTransports } from 'cxp/lib/jsonrpc2/transports/browserWebSocket'
 import { TextDocumentDecoration } from 'cxp/lib/protocol'
-import deepmerge from 'deepmerge'
-import { cloneDeep, fromPairs, get, mapValues, set, toPairs } from 'lodash'
 import { merge } from 'rxjs'
 import { switchMap } from 'rxjs/operators'
 import { Disposable } from 'vscode-languageserver'
 import storage from '../../extension/storage'
-import { ConfiguredExtension, Extensions } from '../components/CXPCommands'
-import { getContext } from './context'
-import { isErrorLike } from './errors'
+import { ErrorLike, isErrorLike } from './errors'
 import { createExtensionsContextController } from './extensions'
-import { queryGraphQL } from './graphql'
 import { createPortMessageTransports } from './PortMessageTransports'
 
 // needs:
@@ -27,17 +23,61 @@ import { createPortMessageTransports } from './PortMessageTransports'
 export const CXP_CONTROLLER = createController()
 
 // needs: ?
-const CXP_EXTENSIONS_CONTEXT_CONTROLLER = createExtensionsContextController()
+export const CXP_EXTENSIONS_CONTEXT_CONTROLLER = createExtensionsContextController()
 
 CXP_EXTENSIONS_CONTEXT_CONTROLLER.viewerConfiguredExtensions.subscribe(
-    configuredExtension => {
-        console.log('hey', configuredExtension)
-        // CXP_CONTROLLER.setEnvironment(
+    configuredExtensions => {
+        console.log(
+            'hey',
+            configuredExtensions,
+            configuredExtensions.map(x => ({
+                id: x.extensionID,
+                settings: { merged: x.settings },
+                isEnabled: x.isEnabled,
+                manifest: x.manifest,
+            }))
+        )
+        CXP_CONTROLLER.setEnvironment({
+            ...CXP_CONTROLLER.environment.environment.value,
+            // TODO(chris) unhard-code this
+            root: '',
+            component: {
+                document: {
+                    languageId: 'go',
+                    text: 'text',
+                    uri: 'foo',
+                    version: 1,
+                },
+                selections: [],
+                visibleRanges: [],
+            },
+            extensions: configuredExtensions.map(x => ({
+                id: x.extensionID,
+                settings: { merged: x.settings },
+                isEnabled: x.isEnabled,
+                manifest: x.manifest,
+            })),
+        })
     },
     err => {
         console.error('Error fetching viewer configured extensions via GraphQL: %O', err)
     }
 )
+
+CXP_CONTROLLER.configurationUpdates.subscribe(
+    update =>
+        storage.getSync(items => {
+            const format = { tabSize: 2, insertSpaces: true, eol: '\n' }
+            items.clientSettings = applyEdits(
+                items.clientSettings,
+                setProperty(items.clientSettings, update.path, update.value, format)
+            )
+            storage.setSync({ ...items, clientSettings: items.clientSettings })
+        }),
+    err => console.error(err)
+)
+
+// TODO(chris) consider putting the environmentFilter in extensions-client-common
 
 /**
  * Filter the environment to omit extensions that should not be activated (based on their manifest's
@@ -53,9 +93,9 @@ function environmentFilter(
             nextEnvironment.extensions.filter(x => {
                 try {
                     const component = nextEnvironment.component
-                    if (x.manifest && !isErrorLike(x.manifest) && x.manifest.activationEvents && component) {
+                    if (x.isEnabled && x.manifest && !isErrorLike(x.manifest) && x.manifest.activationEvents) {
                         return x.manifest.activationEvents.some(
-                            e => e === '*' || e === `onLanguage:${component.document.languageId}`
+                            e => e === '*' || (!!component && e === `onLanguage:${component.document.languageId}`)
                         )
                     }
                 } catch (err) {
@@ -155,28 +195,6 @@ export function createController(): Controller<CXPExtensionWithManifest> {
         )
         resolve(actions.find(a => a.title === value) || null)
     })
-    controller.configurationUpdates.subscribe(
-        update =>
-            storage.getSync(items => {
-                const clientSettings = JSONC.parse(items.clientSettings)
-                const newClientSettings = set(
-                    clientSettings,
-                    ['extensions', update.extension, ...update.path],
-                    update.value
-                )
-                storage.setSync({ ...items, clientSettings: JSON.stringify(newClientSettings, null, 2) })
-
-                const newEnvironment = cloneDeep(CXP_CONTROLLER.environment.environment.value)
-                const extension = (newEnvironment.extensions || []).find(e => e.id === update.extension)
-                if (!extension) {
-                    console.error('WTF')
-                    return
-                }
-                set(extension.settings.merged, update.path, update.value)
-                CXP_CONTROLLER.setEnvironment(newEnvironment)
-            }),
-        err => console.error(err)
-    )
 
     // Print window/logMessage log messages to the browser devtools console.
     controller.logMessages.subscribe(({ message, extension }) => {
@@ -223,14 +241,15 @@ export function createController(): Controller<CXPExtensionWithManifest> {
  * callback (to know how to communicate with or run the extension).
  */
 export interface CXPExtensionWithManifest extends CXPExtension {
-    manifest: SourcegraphExtension
+    isEnabled: boolean
+    manifest: SourcegraphExtension | null | ErrorLike
 }
 
 const createPlatformMessageTransports = (() => {
     const CONTROL = chrome.runtime.connect({ name: 'CONTROL' })
-    return (extension: CXPExtensionWithManifest) =>
+    return ({ id, platform }) =>
         new Promise<MessageTransports>((resolve, reject) => {
-            CONTROL.postMessage({ extensionID: extension.id, platform: extension.manifest.platform })
+            CONTROL.postMessage({ extensionID: id, platform })
             CONTROL.onMessage.addListener((response: { portName: string } | { error: any }) => {
                 if ('error' in response) {
                     reject(response.error)
@@ -245,8 +264,18 @@ function createMessageTransports(
     extension: CXPExtensionWithManifest,
     options: ClientOptions
 ): Promise<MessageTransports> {
+    if (!extension.manifest) {
+        throw new Error(`unable to connect to extension ${JSON.stringify(extension.id)}: no manifest found`)
+    }
+    if (isErrorLike(extension.manifest)) {
+        throw new Error(
+            `unable to connect to extension ${JSON.stringify(extension.id)}: invalid manifest: ${
+                extension.manifest.message
+            }`
+        )
+    }
     if (extension.manifest.platform.type === 'websocket') {
-        return createPlatformMessageTransports(extension)
+        return createPlatformMessageTransports({ id: extension.id, platform: extension.manifest.platform })
     } else if (extension.manifest.platform.type === 'tcp') {
         // The language server CXP extensions on Sourcegraph are specified as
         // TCP endpoints, but they are also served over WebSockets by lsp-proxy
@@ -255,14 +284,14 @@ function createMessageTransports(
         //
         // TODO(chris): Remove this logic if/when platform-rewriting lands
         // https://github.com/sourcegraph/sourcegraph/issues/12598
-        const url = new URL('https://sourcegraph.com')
+        const url = new URL('http://localhost:3080')
         url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
         url.pathname = '.api/lsp'
         url.searchParams.set('mode', extension.id)
         url.searchParams.set('rootUri', options.root || '')
         return createWebSocketMessageTransports(new WebSocket(url.href))
     } else if (extension.manifest.platform.type === 'bundle') {
-        return createPlatformMessageTransports(extension)
+        return createPlatformMessageTransports({ id: extension.id, platform: extension.manifest.platform })
     } else {
         return Promise.reject(
             new Error(
@@ -342,76 +371,4 @@ export const applyDecoration = ({
     }
 
     return mergeDisposables(...disposables)
-}
-
-const fetchEnabledExtensionsFromSourcegraph = (
-    sourcegraphURL: string
-): Promise<{ [id: string]: ConfiguredExtension }> =>
-    queryGraphQL(
-        getContext({ repoKey: '', isRepoSpecific: false }),
-        `query {
-                viewerConfiguredExtensions {
-                    nodes {
-                        extensionID
-                        mergedSettings
-                        extension {
-                            manifest {
-                                raw
-                            }
-                        }
-                    }
-                }
-            }`,
-        {},
-        [sourcegraphURL]
-    )
-        .toPromise()
-        .then(
-            response =>
-                response.data
-                    ? fromPairs(
-                          response.data.viewerConfiguredExtensions.nodes.map(e => [
-                              e.extensionID,
-                              {
-                                  extensionID: e.extensionID,
-                                  manifest: JSONC.parse(get(e, 'extension.manifest.raw', '')),
-                                  settings: {
-                                      merged: e.mergedSettings,
-                                  },
-                              },
-                          ])
-                      )
-                    : {}
-        )
-
-const isEnabled = (extension: CXPExtension): boolean => !extension.settings.merged.disabled
-
-const filterValues = (obj: any, f: (v: any) => any): any => fromPairs(toPairs(obj).filter(([_, v]) => f(v)))
-
-const fetchEnabledExtensionsFromStorage: Promise<{ [id: string]: CXPExtension }> = new Promise((resolve, reject) => {
-    storage.getSync(storageItems => {
-        const settingsByID: { [id: string]: any } = get(JSONC.parse(storageItems.clientSettings), 'extensions', {})
-        const extensions = mapValues(settingsByID, (ext, id) => ({ settings: { merged: ext }, id }))
-        resolve(filterValues(extensions, isEnabled))
-    })
-})
-
-const hasManifest = (extension: ConfiguredExtension & CXPExtension): boolean => 'manifest' in extension
-
-export function fetchCXPExtensions(sourcegraphURL: string): Promise<Extensions> {
-    return fetchEnabledExtensionsFromSourcegraph(sourcegraphURL)
-        .then(sourcegraphExts =>
-            fetchEnabledExtensionsFromStorage.then(storageExts => {
-                const enabledExtensions = Object.values(
-                    deepmerge(sourcegraphExts, storageExts, {
-                        arrayMerge: (_, source) => source,
-                    })
-                )
-                return enabledExtensions.filter(hasManifest)
-            })
-        )
-        .catch(error => {
-            console.warn(error)
-            return []
-        })
 }

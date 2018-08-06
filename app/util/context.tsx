@@ -1,4 +1,5 @@
 import * as path from 'path'
+import { ReplaySubject } from 'rxjs'
 import { isPhabricator } from '../../app/context'
 import * as runtime from '../../extension/runtime'
 import storage from '../../extension/storage'
@@ -19,7 +20,14 @@ export let repositoryFileTreeEnabled = false
 
 export let inlineSymbolSearchEnabled = false
 
-export let useCXP = false
+// TODO(chris) consider converting the others to observables too
+export const useCXP = new ReplaySubject<boolean>(1)
+storage.getSync(items => useCXP.next(items.useCXP))
+storage.onChanged(changes => {
+    if (changes.useCXP) {
+        useCXP.next(changes.useCXP.newValue)
+    }
+})
 
 interface UrlCache {
     [key: string]: string
@@ -39,7 +47,6 @@ if (window.SG_ENV === 'EXTENSION') {
         repositoryFileTreeEnabled = items.repositoryFileTreeEnabled
 
         inlineSymbolSearchEnabled = items.inlineSymbolSearchEnabled
-        useCXP = items.useCXP
     })
 }
 
@@ -86,10 +93,6 @@ export function setRepositoryFileTreeEnabled(enabled: boolean): void {
 
 export function setInlineSymbolSearchEnabled(enabled: boolean): void {
     inlineSymbolSearchEnabled = enabled
-}
-
-export function setUseCXP(value: boolean): void {
-    useCXP = value
 }
 
 /**

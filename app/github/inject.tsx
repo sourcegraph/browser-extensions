@@ -15,35 +15,32 @@ import * as React from 'react'
 import { render, unmountComponentAtNode } from 'react-dom'
 import { forkJoin, of, Subject } from 'rxjs'
 import { filter, map, withLatestFrom } from 'rxjs/operators'
-import { Disposable } from 'vscode-languageserver'
+import { Disposable } from 'vscode-languageserver/lib/main'
 import { findElementWithOffset, getTargetLineAndOffset, GitHubBlobUrl } from '.'
 import storage from '../../extension/storage'
 import { getContext } from '../backend/context'
-import { applyDecoration, CXP_CONTROLLER, fetchCXPExtensions } from '../backend/cxp'
+import { applyDecoration, CXP_CONTROLLER, CXP_EXTENSIONS_CONTEXT_CONTROLLER } from '../backend/cxp'
 import { queryGraphQL } from '../backend/graphql'
 import { createJumpURLFetcher, fetchHover, JumpURLLocation, toTextDocumentIdentifier } from '../backend/lsp'
 import { Alerts } from '../components/Alerts'
 import { BlobAnnotator } from '../components/BlobAnnotator'
 import { CodeViewToolbar } from '../components/CodeViewToolbar'
 import { ContextualSourcegraphButton } from '../components/ContextualSourcegraphButton'
-import { Extensions } from '../components/CXPCommands'
 import { EnableSourcegraphServerButton } from '../components/EnableSourcegraphServerButton'
 import { ServerAuthButton } from '../components/ServerAuthButton'
 import { SymbolsDropdownContainer } from '../components/SymbolsDropdownContainer'
 import { WithResolvedRev } from '../components/WithResolvedRev'
-import { AbsoluteRepo, AbsoluteRepoFile, CodeCell, DiffResolvedRevSpec } from '../repo'
+import { CodeCell, DiffResolvedRevSpec } from '../repo'
 import { resolveRev, retryWhenCloneInProgressError } from '../repo/backend'
 import { getTableDataCell, hideTooltip } from '../repo/tooltips'
 import { RepoRevSidebar } from '../tree/RepoRevSidebar'
 import {
     eventLogger,
-    getModeFromPath,
     inlineSymbolSearchEnabled,
     renderMermaidGraphsEnabled,
     repositoryFileTreeEnabled,
     repoUrlCache,
     sourcegraphUrl,
-    useCXP,
 } from '../util/context'
 import * as featureFlags from '../util/featureFlags'
 import { blobDOMFunctions, diffDomFunctions, searchCodeSnippetDOMFunctions } from './dom_functions'
@@ -145,7 +142,7 @@ function inject(): void {
                     if (isEnabled) {
                         injectCodeIntelligence({ sourcegraphURL })
                     } else {
-                        injectBlobAnnotatorsOld({ sourcegraphURL })
+                        injectBlobAnnotatorsOld()
                         injectCodeSnippetAnnotatorOld({
                             containers: getCodeCommentContainers(),
                             selector: '.border.rounded-1.my-2',
@@ -372,7 +369,7 @@ function injectCodeSnippetAnnotator({
         mount.className = 'sourcegraph-app-annotator'
         filePathContainer.appendChild(mount)
 
-        const renderCodeView = ({ commitID, extensions }: { commitID: string; extensions: Extensions }) =>
+        const renderCodeView = (commitID: string) =>
             render(
                 <CodeViewToolbar
                     repoPath={repoPath}
@@ -380,7 +377,7 @@ function injectCodeSnippetAnnotator({
                     baseCommitID={commitID}
                     baseRev={commitID}
                     buttonProps={buttonProps}
-                    extensions={extensions}
+                    extensions={CXP_EXTENSIONS_CONTEXT_CONTROLLER}
                     cxpController={CXP_CONTROLLER}
                 />,
                 mount
@@ -400,14 +397,7 @@ function injectCodeSnippetAnnotator({
                             commitID,
                         }),
                     })
-
-                    if (!useCXP) {
-                        renderCodeView({ commitID, extensions: [] })
-                    } else {
-                        fetchCXPExtensions(sourcegraphURL)
-                            .then(extensions => renderCodeView({ commitID, extensions }))
-                            .catch(error => console.error(error))
-                    }
+                    renderCodeView(commitID)
                 },
                 err => console.error(repoPath, rev, err)
             )
@@ -560,68 +550,11 @@ const LinkComponent: LinkComponent = ({ to, children, ...rest }) => (
         {children}
     </a>
 )
-/**
- * Fetches CXP extensions from Sourcegraph, fetches file content, and notifies
- * the CXP controller of any changes.
- */
-const updateCXPEnvironment = ({
-    ctx,
-    sourcegraphURL,
-    file,
-}: {
-    ctx: AbsoluteRepoFile
-    sourcegraphURL: string
-    file: HTMLElement
-}): void => {
-    const mkUri = (ctx: AbsoluteRepo) => `git://${ctx.repoPath}?${ctx.commitID}`
 
-    const mkUriPath = (ctx: AbsoluteRepoFile) => `git://${ctx.repoPath}?${ctx.commitID}#${ctx.filePath}`
+// TODO(chris) figure out when to update root+component
 
-    fetchFileContent(ctx)
-        .then(content =>
-            fetchCXPExtensions(sourcegraphURL).then(extensions => {
-                CXP_CONTROLLER.setEnvironment({
-                    root: mkUri(ctx),
-                    component: {
-                        document: {
-                            uri: mkUriPath(ctx),
-                            languageId: getModeFromPath(ctx.filePath) || 'unknownmode',
-                            version: 0,
-                            text: content,
-                        },
-                        selections: [],
-                        visibleRanges: [],
-                    },
-                    extensions: extensions.map(e => ({ ...e, id: e.extensionID })),
-                })
-
-                let oldDecorations: Disposable[] = []
-                CXP_CONTROLLER.registries.textDocumentDecoration
-                    .getDecorations({
-                        textDocument: toTextDocumentIdentifier(ctx),
-                    })
-                    .subscribe(decorations => {
-                        for (const old of oldDecorations) {
-                            old.dispose()
-                        }
-                        oldDecorations = []
-                        for (const decoration of decorations || []) {
-                            try {
-                                oldDecorations.push(
-                                    applyDecoration({
-                                        fileElement: file,
-                                        decoration,
-                                    })
-                                )
-                            } catch (e) {
-                                console.warn(e)
-                            }
-                        }
-                    })
-            })
-        )
-        .catch(error => console.error(error))
-}
+// const mkUri = (ctx: AbsoluteRepo) => `git://${ctx.repoPath}?${ctx.commitID}`
+// const mkUriPath = (ctx: AbsoluteRepoFile) => `git://${ctx.repoPath}?${ctx.commitID}#${ctx.filePath}`
 
 function injectBlobAnnotators({
     hoverifier,
@@ -654,7 +587,7 @@ function injectBlobAnnotators({
                 return
             }
 
-            const renderCodeView = ({ commitID, extensions }: { commitID: string; extensions: Extensions }) =>
+            const renderCodeView = (commitID: string) =>
                 render(
                     <CodeViewToolbar
                         repoPath={repoPath}
@@ -662,7 +595,7 @@ function injectBlobAnnotators({
                         baseCommitID={commitID}
                         baseRev={commitID}
                         buttonProps={buttonProps}
-                        extensions={extensions}
+                        extensions={CXP_EXTENSIONS_CONTEXT_CONTROLLER}
                         cxpController={CXP_CONTROLLER}
                     />,
                     mount
@@ -684,25 +617,7 @@ function injectBlobAnnotators({
                             }),
                         })
 
-                        if (!useCXP) {
-                            renderCodeView({ commitID, extensions: [] })
-                        } else {
-                            if (!filePath) {
-                                // This is impossible because at this point we know both
-                                // `filePath || isDelta` and `!isDelta`.
-                                return
-                            }
-                            updateCXPEnvironment({
-                                ctx: { repoPath, commitID, filePath },
-                                sourcegraphURL,
-                                file,
-                            })
-                            fetchCXPExtensions(sourcegraphURL)
-                                .then(extensions => {
-                                    renderCodeView({ commitID, extensions })
-                                })
-                                .catch(error => console.error(error))
-                        }
+                        renderCodeView(commitID)
                     },
                     err => console.error(err)
                 )
@@ -748,37 +663,18 @@ function injectBlobAnnotators({
             .subscribe(resolvedRevSpec => {
                 const mount = createBlobAnnotatorMount(file, true)
                 if (mount) {
-                    if (useCXP) {
-                        render(
-                            <CodeViewToolbar
-                                repoPath={repoPath}
-                                filePath={headFilePath}
-                                baseCommitID={baseCommitID}
-                                headCommitID={headCommitID}
-                                buttonProps={buttonProps}
-                                extensions={[]}
-                                cxpController={CXP_CONTROLLER}
-                            />,
-                            mount
-                        )
-                    } else {
-                        fetchCXPExtensions(sourcegraphURL)
-                            .then(extensions =>
-                                render(
-                                    <CodeViewToolbar
-                                        repoPath={repoPath}
-                                        filePath={headFilePath}
-                                        baseCommitID={baseCommitID}
-                                        headCommitID={headCommitID}
-                                        buttonProps={buttonProps}
-                                        extensions={extensions}
-                                        cxpController={CXP_CONTROLLER}
-                                    />,
-                                    mount
-                                )
-                            )
-                            .catch(error => console.error(error))
-                    }
+                    render(
+                        <CodeViewToolbar
+                            repoPath={repoPath}
+                            filePath={headFilePath}
+                            baseCommitID={baseCommitID}
+                            headCommitID={headCommitID}
+                            buttonProps={buttonProps}
+                            extensions={CXP_EXTENSIONS_CONTEXT_CONTROLLER}
+                            cxpController={CXP_CONTROLLER}
+                        />,
+                        mount
+                    )
                 }
 
                 // This won't get called if there wasn't a hoverifier
@@ -801,6 +697,52 @@ function injectBlobAnnotators({
     for (const file of Array.from(files)) {
         addBlobAnnotator(file as HTMLElement)
     }
+
+    if (files.length === 1) {
+        // TODO(chris) cxp only supports one component at a time
+
+        // TODO(chris) dispose of the decorations after pjax changes (er, this
+        // might not be very important. The DOM probably gets reconstructed
+        // anyway)
+
+        // TODO(chris) figure out how to propagate the "Enable CXP" option here
+        // and clear/fetch the decorations on toggle
+
+        // TODO(chris) consolidate resolveRev calls (maybe just memoize it for
+        // now)
+        resolveRev({ repoPath, rev })
+            .pipe(retryWhenCloneInProgressError())
+            .subscribe(commitID => {
+                let oldDecorations: Disposable[] = []
+                CXP_CONTROLLER.registries.textDocumentDecoration
+                    .getDecorations({
+                        textDocument: toTextDocumentIdentifier({
+                            commitID,
+                            filePath: filePath || 'no file path, this is a bug in inject.tsx',
+                            repoPath,
+                        }),
+                    })
+                    .subscribe(decorations => {
+                        for (const old of oldDecorations) {
+                            old.dispose()
+                        }
+                        oldDecorations = []
+                        for (const decoration of decorations || []) {
+                            try {
+                                oldDecorations.push(
+                                    applyDecoration({
+                                        fileElement: files[0],
+                                        decoration,
+                                    })
+                                )
+                            } catch (e) {
+                                console.warn(e)
+                            }
+                        }
+                    })
+            })
+    }
+
     const mutationObserver = new MutationObserver(mutations => {
         for (const mutation of mutations) {
             const nodes = Array.prototype.slice.call(mutation.addedNodes)
@@ -840,62 +782,60 @@ function injectBlobAnnotators({
     })
 }
 
-/**
- * Queries GraphQL for the content of a file.
- */
-function fetchFileContent({
-    repoPath,
-    commitID,
-    filePath,
-}: {
-    repoPath: string
-    commitID: string
-    filePath: string | undefined
-}): Promise<string> {
-    return queryGraphQL(
-        getContext({ repoKey: repoPath, isRepoSpecific: true }),
-        `
-            query Blob(
-                $repoPath: String!
-                $commitID: String!
-                $filePath: String!
-            ) {
-                repository(uri: $repoPath) {
-                    commit(rev: $commitID) {
-                        file(path: $filePath) {
-                            content
-                        }
-                    }
-                }
-            }
-        `,
-        { repoPath, commitID, filePath }
-    )
-        .toPromise()
-        .then(response => {
-            const content =
-                response.data &&
-                response.data.repository &&
-                response.data.repository.commit &&
-                response.data.repository.commit.file &&
-                response.data.repository.commit.file.content
-            if (!content) {
-                throw new Error(`Could not fetch file content for ${repoPath} ${commitID} ${filePath}`)
-            }
-            return content
-        })
-}
+// TODO(chris) consider bringing back fetchFileContent or using the code host's
+// API to fill the Component's text
 
-function injectBlobAnnotatorsOld({ sourcegraphURL }: { sourcegraphURL: string }): void {
+// /**
+//  * Queries GraphQL for the content of a file.
+//  */
+// function fetchFileContent({
+//     repoPath,
+//     commitID,
+//     filePath,
+// }: {
+//     repoPath: string
+//     commitID: string
+//     filePath: string | undefined
+// }): Promise<string> {
+//     return queryGraphQL(
+//         getContext({ repoKey: repoPath, isRepoSpecific: true }),
+//         `
+//             query Blob(
+//                 $repoPath: String!
+//                 $commitID: String!
+//                 $filePath: String!
+//             ) {
+//                 repository(uri: $repoPath) {
+//                     commit(rev: $commitID) {
+//                         file(path: $filePath) {
+//                             content
+//                         }
+//                     }
+//                 }
+//             }
+//         `,
+//         { repoPath, commitID, filePath }
+//     )
+//         .toPromise()
+//         .then(response => {
+//             const content =
+//                 response.data &&
+//                 response.data.repository &&
+//                 response.data.repository.commit &&
+//                 response.data.repository.commit.file &&
+//                 response.data.repository.commit.file.content
+//             if (!content) {
+//                 throw new Error(`Could not fetch file content for ${repoPath} ${commitID} ${filePath}`)
+//             }
+//             return content
+//         })
+// }
+
+function injectBlobAnnotatorsOld(): void {
     const { repoPath, isDelta, isPullRequest, rev, isCommit, filePath, position } = parseURL()
     if (!filePath && !isDelta) {
         return
     }
-
-    // TODO(chris): Update the CXP_CONTROLLER when a new component is added.
-    // Waiting on cxp-js to support multiple components.
-    // https://github.com/sourcegraph/cxp-js/issues/11
-    let hasAlreadyRegisteredACXPComponent = false
 
     function addBlobAnnotator(file: HTMLElement): void {
         const getTableElement = () => file.querySelector('table')
@@ -927,76 +867,30 @@ function injectBlobAnnotatorsOld({ sourcegraphURL }: { sourcegraphURL: string })
                 return getCodeCells(table, opt)
             }
 
-            if (!useCXP) {
-                render(
-                    <WithResolvedRev
-                        component={BlobAnnotator}
-                        getTableElement={getTableElement}
-                        getCodeCells={getCodeCellsCb}
-                        getTargetLineAndOffset={getTargetLineAndOffset}
-                        findElementWithOffset={findElementWithOffset}
-                        findTokenCell={findTokenCell}
-                        filterTarget={defaultFilterTarget}
-                        getNodeToConvert={identity}
-                        fileElement={file}
-                        repoPath={repoPath}
-                        rev={rev}
-                        filePath={filePath}
-                        isPullRequest={false}
-                        isSplitDiff={false}
-                        isCommit={false}
-                        isBase={false}
-                        buttonProps={buttonProps}
-                        position={position}
-                    />,
-                    mount
-                )
-            } else if (!hasAlreadyRegisteredACXPComponent) {
-                hasAlreadyRegisteredACXPComponent = true
-                if (!filePath) {
-                    // This is impossible because at this point we know both
-                    // `filePath || isDelta` and `!isDelta`.
-                    return
-                }
-                resolveRev({ repoPath, rev })
-                    .pipe(retryWhenCloneInProgressError())
-                    .subscribe(commitID => {
-                        updateCXPEnvironment({
-                            ctx: { repoPath, commitID, filePath },
-                            sourcegraphURL,
-                            file,
-                        })
-                        fetchCXPExtensions(sourcegraphURL)
-                            .then(extensions => {
-                                render(
-                                    <WithResolvedRev
-                                        component={BlobAnnotator}
-                                        getTableElement={getTableElement}
-                                        getCodeCells={getCodeCellsCb}
-                                        getTargetLineAndOffset={getTargetLineAndOffset}
-                                        findElementWithOffset={findElementWithOffset}
-                                        findTokenCell={findTokenCell}
-                                        filterTarget={defaultFilterTarget}
-                                        getNodeToConvert={identity}
-                                        fileElement={file}
-                                        repoPath={repoPath}
-                                        rev={rev}
-                                        filePath={filePath}
-                                        isPullRequest={false}
-                                        isSplitDiff={false}
-                                        isCommit={false}
-                                        isBase={false}
-                                        buttonProps={buttonProps}
-                                        position={position}
-                                        extensions={extensions}
-                                        cxpController={CXP_CONTROLLER}
-                                    />,
-                                    mount
-                                )
-                            })
-                            .catch(error => console.error(error))
-                    })
-            }
+            render(
+                <WithResolvedRev
+                    component={BlobAnnotator}
+                    getTableElement={getTableElement}
+                    getCodeCells={getCodeCellsCb}
+                    getTargetLineAndOffset={getTargetLineAndOffset}
+                    findElementWithOffset={findElementWithOffset}
+                    findTokenCell={findTokenCell}
+                    filterTarget={defaultFilterTarget}
+                    getNodeToConvert={identity}
+                    fileElement={file}
+                    repoPath={repoPath}
+                    rev={rev}
+                    filePath={filePath}
+                    isPullRequest={false}
+                    isSplitDiff={false}
+                    isCommit={false}
+                    isBase={false}
+                    buttonProps={buttonProps}
+                    position={position}
+                />,
+                mount
+            )
+
             return
         }
 

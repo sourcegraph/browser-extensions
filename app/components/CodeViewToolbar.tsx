@@ -1,12 +1,15 @@
 import * as React from 'react'
 
+import { ExtensionsProps } from '@sourcegraph/extensions-client-common/lib/context'
+import { Settings } from '@sourcegraph/extensions-client-common/lib/copypasta'
+import { ConfigurationSubject } from '@sourcegraph/extensions-client-common/lib/settings'
 import { ContributableMenu } from 'cxp/lib/protocol'
 import { Subscription } from 'rxjs'
 import storage from '../../extension/storage'
 import { CXP_CONTROLLER } from '../backend/cxp'
 import { setServerUrls } from '../util/context'
 import { CodeIntelStatusIndicator } from './CodeIntelStatusIndicator'
-import { ContributedActions, Contributions, CXPControllerProps, ExtensionsProps } from './CXPCommands'
+import { ContributedActions, Contributions, CXPControllerProps } from './CXPCommands'
 import { OpenOnSourcegraph } from './OpenOnSourcegraph'
 
 export interface ButtonProps {
@@ -15,7 +18,7 @@ export interface ButtonProps {
     iconStyle?: React.CSSProperties
 }
 
-interface CodeViewToolbarProps extends ExtensionsProps, CXPControllerProps {
+interface CodeViewToolbarProps extends ExtensionsProps<ConfigurationSubject, Settings>, CXPControllerProps {
     repoPath: string
     filePath: string
 
