@@ -1,4 +1,4 @@
-import { HoverMerged } from 'cxp/lib/types/hover'
+import { HoverMerged } from 'cxp/module/types/hover'
 import { highlightBlock, registerLanguage } from 'highlight.js/lib/highlight'
 import * as _ from 'lodash'
 import marked from 'marked'

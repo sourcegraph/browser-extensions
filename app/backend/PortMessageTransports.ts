@@ -1,12 +1,12 @@
-import { MessageTransports } from 'cxp/lib/jsonrpc2/connection'
-import { Message } from 'cxp/lib/jsonrpc2/messages'
+import { MessageTransports } from 'cxp/module/jsonrpc2/connection'
+import { Message } from 'cxp/module/jsonrpc2/messages'
 import {
     AbstractMessageReader,
     AbstractMessageWriter,
     DataCallback,
     MessageReader,
     MessageWriter,
-} from 'cxp/lib/jsonrpc2/transport'
+} from 'cxp/module/jsonrpc2/transport'
 
 class PortMessageReader extends AbstractMessageReader implements MessageReader {
     private pending: Message[] = []
