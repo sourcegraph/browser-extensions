@@ -731,25 +731,30 @@ function injectBlobAnnotators({
                     .then(response => window.atob(response.content))
             )
 
+        let oldDecorations: Disposable[] = []
+
         forkJoin(resolveRev({ repoPath, rev }).pipe(retryWhenCloneInProgressError()), gitHubFileContent(gitHubState))
             .pipe(withLatestFrom(CXP_EXTENSIONS_CONTEXT_CONTROLLER.viewerConfiguredExtensions))
             .subscribe(([[commitID, fileContent], configuredExtensions]) => {
                 CXP_CONTROLLER.setEnvironment(
-                    deepmerge(CXP_CONTROLLER.environment.environment.value, {
-                        extensions: configuredExtensions.map(configuredExtensionToCXPExtensionWithManifest),
-                        root: mkUri({ repoPath, commitID }),
-                        component: {
-                            document: {
-                                uri: mkUriPath({ repoPath, commitID, filePath }),
-                                languageId: getModeFromPath(filePath),
-                                version: 0,
-                                text: fileContent,
+                    deepmerge(
+                        CXP_CONTROLLER.environment.environment.value,
+                        {
+                            extensions: configuredExtensions.map(configuredExtensionToCXPExtensionWithManifest),
+                            root: mkUri({ repoPath, commitID }),
+                            component: {
+                                document: {
+                                    uri: mkUriPath({ repoPath, commitID, filePath }),
+                                    languageId: getModeFromPath(filePath),
+                                    version: 0,
+                                    text: fileContent,
+                                },
                             },
                         },
-                    })
+                        { arrayMerge: (dest, source) => source }
+                    )
                 )
 
-                let oldDecorations: Disposable[] = []
                 CXP_CONTROLLER.registries.textDocumentDecoration
                     .getDecorations({
                         textDocument: toTextDocumentIdentifier({
