@@ -1,0 +1,34 @@
+// Imports, styles, and CSS variables for @sourcegraph/extensions-client-common.
+@import 'node_modules/@sourcegraph/extensions-client-common/lib/components/PopoverButton.css';
+@import 'node_modules/@sourcegraph/extensions-client-common/lib/components/Toggle.css';
+@import 'node_modules/@sourcegraph/extensions-client-common/lib/cxp/CXPCommandList';
+@import 'node_modules/@sourcegraph/extensions-client-common/lib/cxp/CXPStatus';
+@import 'node_modules/@sourcegraph/extensions-client-common/lib/extensions/manager/ExtensionCard.css';
+
+:root {
+    --primary-opacity-2: #{transparentize($primary, 0.8)};
+    --dropdown-bg: #{$color-light-bg-1};
+    --extension-card-bg: #{lighten($color-light-bg-2, 2.5%)};
+    --dropdown-border-color: #{$color-light-border};
+}
+
+// Formats an icon so that it appears inline in the text
+// with height matching the text
+.icon-inline {
+    // SVGs already include padding to account for text baseline,
+    // so align with the bottom of the text
+    vertical-align: bottom;
+    display: inline-flex;
+    align-items: center;
+}
+
+.nav img.icon-inline {
+    // TODO find a better way to scale icons that is not proportional to the font size
+    // 14px font size -> 20px icon size
+    // stylelint-disable-next-line declaration-property-unit-whitelist
+    width: (20em / 14);
+    // stylelint-disable-next-line declaration-property-unit-whitelist
+    height: (20em / 14);
+    // Match color of the text
+    fill: currentColor;
+}

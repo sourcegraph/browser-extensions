@@ -68,6 +68,11 @@ $theme-colors-light: (
 @import 'node_modules/bootstrap/scss/mixins';
 @import 'node_modules/bootstrap/scss/alert';
 @import 'node_modules/bootstrap/scss/card';
+@import 'node_modules/bootstrap/scss/badge';
+@import 'node_modules/bootstrap/scss/nav';
+@import 'node_modules/bootstrap/scss/button';
+@import 'node_modules/bootstrap/scss/popover';
+@import 'node_modules/bootstrap/scss/dropdown';
 @import 'node_modules/bootstrap/scss/utilities/text';
 @import './global-styles/card';
 @import './global-styles/icons';
@@ -82,21 +87,7 @@ $theme-colors-light: (
 @import './components/codeIntelStatusIndicator';
 @import 'node_modules/@sourcegraph/codeintellify/lib/HoverOverlay.scss';
 @import 'node_modules/@sourcegraph/react-loading-spinner/lib/LoadingSpinner.css';
-@import 'node_modules/@sourcegraph/extensions-client-common/lib/components/Toggle.css';
-@import 'node_modules/@sourcegraph/extensions-client-common/lib/extensions/manager/ExtensionCard.css';
-
-// copy pasta from web/src/extensions/extensions-client-common.scss
-
-:root {
-    --primary-opacity-2: #{transparentize($primary, 0.8)};
-}
-
-.theme-light {
-    --extension-card-bg: #{lighten($color-light-bg-2, 2.5%)};
-}
-.theme-dark {
-    --extension-card-bg: #{$color-bg-2};
-}
+@import './extensions-client-common';
 
 // copy-pasta from web/src/global-styles/type.scss
 

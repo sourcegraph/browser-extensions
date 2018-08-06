@@ -9,6 +9,9 @@ import {
 } from '@sourcegraph/codeintellify'
 import { propertyIsDefined } from '@sourcegraph/codeintellify/lib/helpers'
 import { HoverMerged } from '@sourcegraph/codeintellify/lib/types'
+import { CXPCommandListPopoverButton } from '@sourcegraph/extensions-client-common/lib/cxp/CXPCommandList'
+import { CXPStatusPopover } from '@sourcegraph/extensions-client-common/lib/cxp/CXPStatus'
+import { ContributableMenu } from 'cxp/module/protocol'
 import { identity } from 'lodash'
 import mermaid from 'mermaid'
 import * as React from 'react'
@@ -110,6 +113,37 @@ function injectCodeIntelligence({ sourcegraphURL }: { sourcegraphURL: string }):
     })
 }
 
+function injectCXPGlobalComponents({ sourcegraphURL }: { sourcegraphURL: string }): void {
+    const statusElem = document.createElement('div')
+    statusElem.id = 'cxp-global'
+    statusElem.style.position = 'fixed'
+    statusElem.style.bottom = '0'
+    statusElem.style.right = '0'
+    document.body.appendChild(statusElem)
+    render(
+        <CXPStatusPopover
+            cxpController={CXP_CONTROLLER}
+            caretIcon={CXP_EXTENSIONS_CONTEXT_CONTROLLER.context.icons.CaretDown}
+            loaderIcon={CXP_EXTENSIONS_CONTEXT_CONTROLLER.context.icons.Loader}
+        />,
+        statusElem
+    )
+
+    const headerElem = document.querySelector('div.HeaderMenu')
+    if (headerElem) {
+        const commandListElem = document.createElement('div')
+        headerElem.appendChild(commandListElem)
+        render(
+            <CXPCommandListPopoverButton
+                cxpController={CXP_CONTROLLER}
+                menu={ContributableMenu.GlobalNav}
+                extensions={CXP_EXTENSIONS_CONTEXT_CONTROLLER}
+            />,
+            commandListElem
+        )
+    }
+}
+
 /**
  * Returns the URL of the first Sourcegraph instance that has the given
  * repository.
@@ -142,6 +176,7 @@ function inject(): void {
                 .then(sourcegraphURL => {
                     if (isEnabled) {
                         injectCodeIntelligence({ sourcegraphURL })
+                        injectCXPGlobalComponents({ sourcegraphURL })
                     } else {
                         injectBlobAnnotatorsOld()
                         injectCodeSnippetAnnotatorOld({
