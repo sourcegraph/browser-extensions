@@ -727,51 +727,52 @@ function injectBlobAnnotators({
 
         let oldDecorations: Disposable[] = []
 
-        forkJoin(resolveRev({ repoPath, rev }).pipe(retryWhenCloneInProgressError()), gitHubFileContent(gitHubState))
-            .pipe(withLatestFrom(CXP_EXTENSIONS_CONTEXT_CONTROLLER.viewerConfiguredExtensions))
-            .subscribe(([[commitID, fileContent], configuredExtensions]) => {
-                rootAndComponent.next({
-                    root: mkUri({ repoPath, commitID }),
-                    component: {
-                        document: {
-                            uri: mkUriPath({ repoPath, commitID, filePath }),
-                            // TODO(chris) handle unknown modes
-                            languageId: getModeFromPath(filePath) || 'could not determine mode',
-                            version: 0,
-                            text: fileContent,
-                        },
-                        selections: [],
-                        visibleRanges: [],
+        forkJoin(
+            resolveRev({ repoPath, rev }).pipe(retryWhenCloneInProgressError()),
+            gitHubFileContent(gitHubState)
+        ).subscribe(([commitID, fileContent]) => {
+            rootAndComponent.next({
+                root: mkUri({ repoPath, commitID }),
+                component: {
+                    document: {
+                        uri: mkUriPath({ repoPath, commitID, filePath }),
+                        // TODO(chris) handle unknown modes
+                        languageId: getModeFromPath(filePath) || 'could not determine mode',
+                        version: 0,
+                        text: fileContent,
                     },
-                })
-
-                CXP_CONTROLLER.registries.textDocumentDecoration
-                    .getDecorations({
-                        textDocument: toTextDocumentIdentifier({
-                            commitID,
-                            filePath,
-                            repoPath,
-                        }),
-                    })
-                    .subscribe(decorations => {
-                        for (const old of oldDecorations) {
-                            old.dispose()
-                        }
-                        oldDecorations = []
-                        for (const decoration of decorations || []) {
-                            try {
-                                oldDecorations.push(
-                                    applyDecoration({
-                                        fileElement: files[0],
-                                        decoration,
-                                    })
-                                )
-                            } catch (e) {
-                                console.warn(e)
-                            }
-                        }
-                    })
+                    selections: [],
+                    visibleRanges: [],
+                },
             })
+
+            CXP_CONTROLLER.registries.textDocumentDecoration
+                .getDecorations({
+                    textDocument: toTextDocumentIdentifier({
+                        commitID,
+                        filePath,
+                        repoPath,
+                    }),
+                })
+                .subscribe(decorations => {
+                    for (const old of oldDecorations) {
+                        old.dispose()
+                    }
+                    oldDecorations = []
+                    for (const decoration of decorations || []) {
+                        try {
+                            oldDecorations.push(
+                                applyDecoration({
+                                    fileElement: files[0],
+                                    decoration,
+                                })
+                            )
+                        } catch (e) {
+                            console.warn(e)
+                        }
+                    }
+                })
+        })
     }
 
     const mutationObserver = new MutationObserver(mutations => {
