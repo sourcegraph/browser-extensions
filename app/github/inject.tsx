@@ -9,11 +9,12 @@ import {
 } from '@sourcegraph/codeintellify'
 import { propertyIsDefined } from '@sourcegraph/codeintellify/lib/helpers'
 import { HoverMerged } from '@sourcegraph/codeintellify/lib/types'
+import deepmerge from 'deepmerge'
 import { identity } from 'lodash'
 import mermaid from 'mermaid'
 import * as React from 'react'
 import { render, unmountComponentAtNode } from 'react-dom'
-import { forkJoin, of, Subject } from 'rxjs'
+import { forkJoin, from, of, Subject } from 'rxjs'
 import { filter, map, withLatestFrom } from 'rxjs/operators'
 import { Disposable } from 'vscode-languageserver/lib/main'
 import { findElementWithOffset, getTargetLineAndOffset, GitHubBlobUrl } from '.'
@@ -30,12 +31,13 @@ import { EnableSourcegraphServerButton } from '../components/EnableSourcegraphSe
 import { ServerAuthButton } from '../components/ServerAuthButton'
 import { SymbolsDropdownContainer } from '../components/SymbolsDropdownContainer'
 import { WithResolvedRev } from '../components/WithResolvedRev'
-import { CodeCell, DiffResolvedRevSpec } from '../repo'
+import { AbsoluteRepo, AbsoluteRepoFile, CodeCell, DiffResolvedRevSpec } from '../repo'
 import { resolveRev, retryWhenCloneInProgressError } from '../repo/backend'
 import { getTableDataCell, hideTooltip } from '../repo/tooltips'
 import { RepoRevSidebar } from '../tree/RepoRevSidebar'
 import {
     eventLogger,
+    getModeFromPath,
     inlineSymbolSearchEnabled,
     renderMermaidGraphsEnabled,
     repositoryFileTreeEnabled,
@@ -553,8 +555,8 @@ const LinkComponent: LinkComponent = ({ to, children, ...rest }) => (
 
 // TODO(chris) figure out when to update root+component
 
-// const mkUri = (ctx: AbsoluteRepo) => `git://${ctx.repoPath}?${ctx.commitID}`
-// const mkUriPath = (ctx: AbsoluteRepoFile) => `git://${ctx.repoPath}?${ctx.commitID}#${ctx.filePath}`
+const mkUri = (ctx: AbsoluteRepo) => `git://${ctx.repoPath}?${ctx.commitID}`
+const mkUriPath = (ctx: AbsoluteRepoFile) => `git://${ctx.repoPath}?${ctx.commitID}#${ctx.filePath}`
 
 function injectBlobAnnotators({
     hoverifier,
@@ -698,7 +700,10 @@ function injectBlobAnnotators({
         addBlobAnnotator(file as HTMLElement)
     }
 
-    if (files.length === 1) {
+    if (files.length === 1 && filePath) {
+        // TODO(chris) verify this is actually a blob page before fetching file
+        // content from GitHub and applying decorations
+
         // TODO(chris) cxp only supports one component at a time
 
         // TODO(chris) dispose of the decorations after pjax changes (er, this
@@ -710,37 +715,77 @@ function injectBlobAnnotators({
 
         // TODO(chris) consolidate resolveRev calls (maybe just memoize it for
         // now)
-        resolveRev({ repoPath, rev })
-            .pipe(retryWhenCloneInProgressError())
-            .subscribe(commitID => {
-                let oldDecorations: Disposable[] = []
-                CXP_CONTROLLER.registries.textDocumentDecoration
-                    .getDecorations({
-                        textDocument: toTextDocumentIdentifier({
-                            commitID,
-                            filePath: filePath || 'no file path, this is a bug in inject.tsx',
-                            repoPath,
-                        }),
-                    })
-                    .subscribe(decorations => {
-                        for (const old of oldDecorations) {
-                            old.dispose()
+
+        const gitHubState = getGitHubState(window.location.href) as GitHubBlobUrl
+        // const fileContentStub = 'hmm need to fetch text'
+
+        const gitHubFileContent = ({ owner, repoName, filePath }) =>
+            from(
+                fetch(`https://api.github.com/repos/${owner}/${repoName}/contents/${filePath}`)
+                    .then(response => response.json())
+                    .then(response => window.atob(response.content))
+            )
+
+        forkJoin(
+            resolveRev({ repoPath, rev }).pipe(retryWhenCloneInProgressError()),
+            gitHubFileContent(gitHubState)
+        ).subscribe(([commitID, fileContent]) => {
+            console.log(
+                'setEnvironment with root and component (THIS MUST HAPPEN BEFORE "setEnvironment with extensions"',
+                {
+                    root: mkUri({ repoPath, commitID }),
+                    component: {
+                        document: {
+                            uri: mkUriPath({ repoPath, commitID, filePath }),
+                            languageId: getModeFromPath(filePath),
+                            version: 0,
+                            text: fileContent,
+                        },
+                    },
+                }
+            )
+            CXP_CONTROLLER.setEnvironment(
+                deepmerge(CXP_CONTROLLER.environment.environment.value, {
+                    root: mkUri({ repoPath, commitID }),
+                    component: {
+                        document: {
+                            uri: mkUriPath({ repoPath, commitID, filePath }),
+                            languageId: getModeFromPath(filePath),
+                            version: 0,
+                            text: fileContent,
+                        },
+                    },
+                })
+            )
+
+            let oldDecorations: Disposable[] = []
+            CXP_CONTROLLER.registries.textDocumentDecoration
+                .getDecorations({
+                    textDocument: toTextDocumentIdentifier({
+                        commitID,
+                        filePath: filePath || 'no file path, this is a bug in inject.tsx',
+                        repoPath,
+                    }),
+                })
+                .subscribe(decorations => {
+                    for (const old of oldDecorations) {
+                        old.dispose()
+                    }
+                    oldDecorations = []
+                    for (const decoration of decorations || []) {
+                        try {
+                            oldDecorations.push(
+                                applyDecoration({
+                                    fileElement: files[0],
+                                    decoration,
+                                })
+                            )
+                        } catch (e) {
+                            console.warn(e)
                         }
-                        oldDecorations = []
-                        for (const decoration of decorations || []) {
-                            try {
-                                oldDecorations.push(
-                                    applyDecoration({
-                                        fileElement: files[0],
-                                        decoration,
-                                    })
-                                )
-                            } catch (e) {
-                                console.warn(e)
-                            }
-                        }
-                    })
-            })
+                    }
+                })
+        })
     }
 
     const mutationObserver = new MutationObserver(mutations => {

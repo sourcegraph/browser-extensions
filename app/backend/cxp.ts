@@ -17,40 +17,15 @@ import { ErrorLike, isErrorLike } from './errors'
 import { createExtensionsContextController } from './extensions'
 import { createPortMessageTransports } from './PortMessageTransports'
 
-// needs:
-// - Root: github.com/gorilla/mux
-// - File: mux.go
 export const CXP_CONTROLLER = createController()
 
-// needs: ?
 export const CXP_EXTENSIONS_CONTEXT_CONTROLLER = createExtensionsContextController()
 
 CXP_EXTENSIONS_CONTEXT_CONTROLLER.viewerConfiguredExtensions.subscribe(
     configuredExtensions => {
-        console.log(
-            'hey',
-            configuredExtensions,
-            configuredExtensions.map(x => ({
-                id: x.extensionID,
-                settings: { merged: x.settings },
-                isEnabled: x.isEnabled,
-                manifest: x.manifest,
-            }))
-        )
+        console.log('setEnvironment with extensions', configuredExtensions)
         CXP_CONTROLLER.setEnvironment({
             ...CXP_CONTROLLER.environment.environment.value,
-            // TODO(chris) unhard-code this
-            root: '',
-            component: {
-                document: {
-                    languageId: 'go',
-                    text: 'text',
-                    uri: 'foo',
-                    version: 1,
-                },
-                selections: [],
-                visibleRanges: [],
-            },
             extensions: configuredExtensions.map(x => ({
                 id: x.extensionID,
                 settings: { merged: x.settings },
