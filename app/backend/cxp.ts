@@ -10,10 +10,11 @@ import { MessageTransports } from 'cxp/module/jsonrpc2/connection'
 import { BrowserConsoleTracer, Trace } from 'cxp/module/jsonrpc2/trace'
 import { createWebSocketMessageTransports } from 'cxp/module/jsonrpc2/transports/browserWebSocket'
 import { TextDocumentDecoration } from 'cxp/module/protocol'
-import { combineLatest, merge, ReplaySubject } from 'rxjs'
+import { combineLatest, from, merge, ReplaySubject } from 'rxjs'
 import { switchMap } from 'rxjs/operators'
 import { Disposable } from 'vscode-languageserver'
 import storage from '../../extension/storage'
+import { sourcegraphURLSubject } from '../util/context'
 import { ErrorLike, isErrorLike } from './errors'
 import { createExtensionsContextController } from './extensions'
 import { createPortMessageTransports } from './PortMessageTransports'
@@ -265,12 +266,16 @@ function createMessageTransports(
         //
         // TODO(chris): Remove this logic if/when platform-rewriting lands
         // https://github.com/sourcegraph/sourcegraph/issues/12598
-        const url = new URL('http://localhost:3080')
-        url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-        url.pathname = '.api/lsp'
-        url.searchParams.set('mode', extension.id)
-        url.searchParams.set('rootUri', options.root || '')
-        return createWebSocketMessageTransports(new WebSocket(url.href))
+        return from(sourcegraphURLSubject)
+            .toPromise()
+            .then(urlString => {
+                const url = new URL(urlString)
+                url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+                url.pathname = '.api/lsp'
+                url.searchParams.set('mode', extension.id)
+                url.searchParams.set('rootUri', options.root || '')
+                return createWebSocketMessageTransports(new WebSocket(url.href))
+            })
     } else if (extension.manifest.platform.type === 'bundle') {
         return createPlatformMessageTransports({ id: extension.id, platform: extension.manifest.platform })
     } else {

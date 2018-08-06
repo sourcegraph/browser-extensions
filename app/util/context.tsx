@@ -29,6 +29,16 @@ storage.onChanged(changes => {
     }
 })
 
+// TODO(chris) consider factoring out this pattern of
+// ReplaySubject+getSync+onChanged
+export const sourcegraphURLSubject = new ReplaySubject<string>(1)
+storage.getSync(items => sourcegraphURLSubject.next(items.sourcegraphURL))
+storage.onChanged(changes => {
+    if (changes.sourcegraphURL) {
+        sourcegraphURLSubject.next(changes.sourcegraphURL.newValue)
+    }
+})
+
 interface UrlCache {
     [key: string]: string
 }

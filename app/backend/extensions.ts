@@ -14,8 +14,9 @@ import { removeProperty, setProperty } from '@sqs/jsonc-parser/lib/edit'
 import deepmerge from 'deepmerge'
 import { flatten, isEqual } from 'lodash'
 import { combineLatest, Observable, ReplaySubject, Subject, throwError } from 'rxjs'
-import { distinctUntilChanged, map, mergeMap, tap } from 'rxjs/operators'
+import { distinctUntilChanged, map, mergeMap, switchMap, take } from 'rxjs/operators'
 import storage from '../../extension/storage'
+import { sourcegraphURLSubject } from '../util/context'
 import { getContext } from './context'
 import { createAggregateError } from './errors'
 import { queryGraphQL } from './graphql'
@@ -64,25 +65,7 @@ const mergeCascades: (
     merged: cascades.map(cascade => cascade.merged).reduce((acc, obj) => deepmerge(acc, obj), {}),
 })
 
-// copy pasta from web/src/settings/configuration.ts
-
-/**
- * Always represents the entire configuration cascade; i.e., it contains the
- * individual configs from the various config subjects (orgs, user, etc.).
- */
-export const gqlConfigurationCascade = new ReplaySubject<GQL.IConfigurationCascade>(1)
-
 // copy pasta from web/src/user/settings/backend.tsx
-
-/**
- * Refreshes the configuration from the server.
- */
-export function refreshConfiguration(): Observable<never> {
-    return fetchViewerConfiguration().pipe(
-        tap(result => gqlConfigurationCascade.next(result)),
-        mergeMap(() => [])
-    )
-}
 
 const configurationCascadeFragment = gql`
     fragment ConfigurationCascadeFields on ConfigurationCascade {
@@ -121,41 +104,39 @@ const configurationCascadeFragment = gql`
     }
 `
 
-/**
- * Fetches the viewer's configuration from the server. Callers should use refreshConfiguration instead of calling
- * this function, to ensure that the result is propagated consistently throughout the app instead of only being
- * returned to the caller.
- *
- * @return Observable that emits the configuration
- */
-function fetchViewerConfiguration(): Observable<GQL.IConfigurationCascade> {
-    return queryGraphQL(
-        getContext({ repoKey: '', isRepoSpecific: false }),
-        gql`
-            query Configuration {
-                viewerConfiguration {
-                    ...ConfigurationCascadeFields
-                }
-            }
-            ${configurationCascadeFragment}
-        `[graphQLContent],
-        {},
-        // TODO(chris) un-hardcode 'localhost:3080'
-        ['http://localhost:3080']
-    ).pipe(
-        map(({ data, errors }) => {
-            if (!data || !data.viewerConfiguration) {
-                throw createAggregateError(errors)
-            }
-            return data.viewerConfiguration
-        })
-    )
-}
+// copy pasta from web/src/settings/configuration.ts
 
-// Eagerly fetch configuration to warm up the configurationCascade ReplaySubject.
-refreshConfiguration()
-    .toPromise()
-    .then(() => void 0, err => console.error(err))
+/**
+ * Always represents the entire configuration cascade; i.e., it contains the
+ * individual configs from the various config subjects (orgs, user, etc.).
+ */
+export const gqlConfigurationCascade = new ReplaySubject<GQL.IConfigurationCascade>(1)
+sourcegraphURLSubject
+    .pipe(
+        switchMap(url =>
+            queryGraphQL(
+                getContext({ repoKey: '', isRepoSpecific: false }),
+                gql`
+                    query Configuration {
+                        viewerConfiguration {
+                            ...ConfigurationCascadeFields
+                        }
+                    }
+                    ${configurationCascadeFragment}
+                `[graphQLContent],
+                {},
+                [url]
+            ).pipe(
+                map(({ data, errors }) => {
+                    if (!data || !data.viewerConfiguration) {
+                        throw createAggregateError(errors)
+                    }
+                    return data.viewerConfiguration
+                })
+            )
+        )
+    )
+    .subscribe(cascade => gqlConfigurationCascade.next(cascade))
 
 export function createExtensionsContextController(): ExtensionsContextController<ConfigurationSubject> {
     return new ExtensionsContextController<ConfigurationSubject>({
@@ -197,12 +178,13 @@ export function createExtensionsContextController(): ExtensionsContextController
             return update
         },
 
-        // TODO(chris) figure out which Sourcegraph URL to hit
         queryGraphQL: (request, variables) =>
-            // TODO(chris) un-hardcode localhost
-            queryGraphQL(getContext({ repoKey: '', isRepoSpecific: false }), request, variables, [
-                'http://localhost:3080',
-            ]),
+            sourcegraphURLSubject.pipe(
+                take(1),
+                mergeMap(url =>
+                    queryGraphQL(getContext({ repoKey: '', isRepoSpecific: false }), request, variables, [url])
+                )
+            ),
         icons: {
             Loader: Loader as React.ComponentType<{ className: 'icon-inline' }>,
             Warning: Warning as React.ComponentType<{ className: 'icon-inline' }>,
