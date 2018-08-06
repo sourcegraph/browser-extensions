@@ -147,7 +147,7 @@ export function createExtensionsContextController(): ExtensionsContextController
         // TODO(chris) figure out what happens when this fails. A user might not
         // have permission. Or maybe we should restrict updates to the Client
         // subject (and ban User, Org, and Site).
-        updateExtensionSettings: (subjectID, { extensionID, enabled, remove }) => {
+        updateExtensionSettings: (subjectID, { extensionID, edit, enabled, remove }) => {
             if (subjectID !== 'Client') {
                 return throwError('Cannot update settings for ' + subjectID + '.')
             }
@@ -158,7 +158,12 @@ export function createExtensionsContextController(): ExtensionsContextController
             storage.getSync(storageItems => {
                 console.log('getSync', storageItems)
                 const format = { tabSize: 2, insertSpaces: true, eol: '\n' }
-                if (typeof enabled === 'boolean') {
+                if (edit) {
+                    storageItems.clientSettings = applyEdits(
+                        storageItems.clientSettings,
+                        setProperty(storageItems.clientSettings, edit.path, edit.value, format)
+                    )
+                } else if (typeof enabled === 'boolean') {
                     storageItems.clientSettings = applyEdits(
                         storageItems.clientSettings,
                         setProperty(storageItems.clientSettings, ['extensions', extensionID], enabled, format)

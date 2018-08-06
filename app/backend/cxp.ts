@@ -1,7 +1,5 @@
 import { ConfiguredExtension } from '@sourcegraph/extensions-client-common/lib/extensions/extension'
 import { SourcegraphExtension } from '@sourcegraph/extensions-client-common/lib/schema/extension.schema'
-import { applyEdits } from '@sqs/jsonc-parser'
-import { setProperty } from '@sqs/jsonc-parser/lib/edit'
 import { ClientOptions, ClientState } from 'cxp/module/client/client'
 import { Controller } from 'cxp/module/environment/controller'
 import { Environment } from 'cxp/module/environment/environment'
@@ -42,19 +40,6 @@ combineLatest(CXP_EXTENSIONS_CONTEXT_CONTROLLER.viewerConfiguredExtensions, root
     err => {
         console.error('Error fetching viewer configured extensions via GraphQL: %O', err)
     }
-)
-
-CXP_CONTROLLER.configurationUpdates.subscribe(
-    update =>
-        storage.getSync(items => {
-            const format = { tabSize: 2, insertSpaces: true, eol: '\n' }
-            items.clientSettings = applyEdits(
-                items.clientSettings,
-                setProperty(items.clientSettings, update.path, update.value, format)
-            )
-            storage.setSync({ ...items, clientSettings: items.clientSettings })
-        }),
-    err => console.error(err)
 )
 
 // TODO(chris) circle back on SG URL
