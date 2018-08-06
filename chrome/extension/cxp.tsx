@@ -73,7 +73,7 @@ class BrowserSettingsEditor extends React.Component<{}, State> {
 
 const renderExtensionsList = routeComponentProps => (
     <>
-        <ExtensionsList {...routeComponentProps} authenticatedUser={'Client'} extensions={x} />
+        <ExtensionsList {...routeComponentProps} subject={'Client'} extensions={x} />
         <BrowserSettingsEditor />
     </>
 )
