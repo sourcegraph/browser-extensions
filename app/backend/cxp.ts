@@ -10,6 +10,7 @@ import { MessageTransports } from 'cxp/module/jsonrpc2/connection'
 import { createWebSocketMessageTransports } from 'cxp/module/jsonrpc2/transports/browserWebSocket'
 import { TextDocumentDecoration } from 'cxp/module/protocol'
 import { combineLatest, from, ReplaySubject } from 'rxjs'
+import { take } from 'rxjs/operators'
 import { Disposable } from 'vscode-languageserver'
 import { sourcegraphURLSubject } from '../util/context'
 import { isErrorLike } from './errors'
@@ -80,6 +81,7 @@ export function createMessageTransports(
         // TODO(chris): Remove this logic if/when platform-rewriting lands
         // https://github.com/sourcegraph/sourcegraph/issues/12598
         return from(sourcegraphURLSubject)
+            .pipe(take(1))
             .toPromise()
             .then(urlString => {
                 const url = new URL(urlString)
