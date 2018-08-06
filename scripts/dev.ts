@@ -28,9 +28,9 @@ compiler.watch(
     (err, stats) => {
         console.log(stats.toString('errors-only'))
 
-        if (stats.hasErrors()) {
-            return
-        }
+        // if (stats.hasErrors()) {
+        //     return
+        // }
 
         tasks.buildSafari('dev')
         buildChrome()

@@ -1,25 +1,23 @@
+import {
+    createController as createCXPController,
+    CXPExtensionWithManifest,
+} from '@sourcegraph/extensions-client-common/lib/cxp/controller'
 import { ConfiguredExtension } from '@sourcegraph/extensions-client-common/lib/extensions/extension'
-import { SourcegraphExtension } from '@sourcegraph/extensions-client-common/lib/schema/extension.schema'
-import { ClientOptions, ClientState } from 'cxp/module/client/client'
-import { Controller } from 'cxp/module/environment/controller'
+import { ClientOptions } from 'cxp/module/client/client'
 import { Environment } from 'cxp/module/environment/environment'
-import { Extension, Extension as CXPExtension } from 'cxp/module/environment/extension'
+import { Extension } from 'cxp/module/environment/extension'
 import { MessageTransports } from 'cxp/module/jsonrpc2/connection'
-import { BrowserConsoleTracer, Trace } from 'cxp/module/jsonrpc2/trace'
 import { createWebSocketMessageTransports } from 'cxp/module/jsonrpc2/transports/browserWebSocket'
 import { TextDocumentDecoration } from 'cxp/module/protocol'
-import { combineLatest, from, merge, ReplaySubject } from 'rxjs'
-import { switchMap } from 'rxjs/operators'
+import { combineLatest, from, ReplaySubject } from 'rxjs'
 import { Disposable } from 'vscode-languageserver'
-import storage from '../../extension/storage'
 import { sourcegraphURLSubject } from '../util/context'
-import { ErrorLike, isErrorLike } from './errors'
+import { isErrorLike } from './errors'
 import { createExtensionsContextController } from './extensions'
 import { createPortMessageTransports } from './PortMessageTransports'
 
-export const CXP_CONTROLLER = createController()
-
 export const CXP_EXTENSIONS_CONTEXT_CONTROLLER = createExtensionsContextController()
+export const CXP_CONTROLLER = createCXPController(CXP_EXTENSIONS_CONTEXT_CONTROLLER.context, createMessageTransports)
 
 export const rootAndComponent = new ReplaySubject<Pick<Environment<Extension>, 'root' | 'component'>>(1)
 
@@ -42,176 +40,6 @@ combineLatest(CXP_EXTENSIONS_CONTEXT_CONTROLLER.viewerConfiguredExtensions, root
     }
 )
 
-// TODO(chris) circle back on SG URL
-
-// TODO(chris) consider putting the environmentFilter in extensions-client-common
-
-/**
- * Filter the environment to omit extensions that should not be activated (based on their manifest's
- * activationEvents).
- */
-function environmentFilter(
-    nextEnvironment: Environment<CXPExtensionWithManifest>
-): Environment<CXPExtensionWithManifest> {
-    return {
-        ...nextEnvironment,
-        extensions:
-            nextEnvironment.extensions &&
-            nextEnvironment.extensions.filter(x => {
-                try {
-                    const component = nextEnvironment.component
-                    if (x.isEnabled && x.manifest && !isErrorLike(x.manifest) && x.manifest.activationEvents) {
-                        return x.manifest.activationEvents.some(
-                            e => e === '*' || (!!component && e === `onLanguage:${component.document.languageId}`)
-                        )
-                    }
-                } catch (err) {
-                    console.error(err)
-                }
-                return false
-            }),
-    }
-}
-
-function clientStateToColor(state: ClientState): string {
-    switch (state) {
-        case ClientState.Initial:
-            return 'AliceBlue'
-        case ClientState.Connecting:
-            return 'AliceBlue'
-        case ClientState.Initializing:
-            return 'AliceBlue'
-        case ClientState.ActivateFailed:
-            return 'Pink'
-        case ClientState.Active:
-            return 'PaleGreen'
-        case ClientState.ShuttingDown:
-            return 'LemonChiffon'
-        case ClientState.Stopped:
-            return 'LightGray'
-    }
-}
-
-function clientStateToName(state: ClientState): string {
-    switch (state) {
-        case ClientState.Initial:
-            return 'Initial'
-        case ClientState.Connecting:
-            return 'Connecting'
-        case ClientState.Initializing:
-            return 'Initializing'
-        case ClientState.ActivateFailed:
-            return 'ActivateFailed'
-        case ClientState.Active:
-            return 'Active'
-        case ClientState.ShuttingDown:
-            return 'ShuttingDown'
-        case ClientState.Stopped:
-            return 'Stopped'
-    }
-}
-
-const RESET_COLOR = 'font-weight:normal;background-color:unset'
-
-/**
- * Creates the CXP controller, which handles all CXP communication between the React app and CXP extension.
- *
- * There should only be a single controller for the entire application. The controller's environment represents all
- * of the application state that the controller needs to know.
- *
- * It receives state updates via calls to the setEnvironment method from React components. It provides results to
- * React components via its registries and the showMessages, etc., observables.
- */
-export function createController(): Controller<CXPExtensionWithManifest> {
-    const controller = new Controller<CXPExtensionWithManifest>({
-        clientOptions: (clientKey, clientOptions, extension) => ({
-            initializationFailedHandler: err => {
-                console.error('Initialization failed for extension', extension.id, ':', err)
-                return false
-            },
-            createMessageTransports: () => createMessageTransports(extension, clientOptions),
-            trace: Trace.fromString(localStorage.getItem('traceCXP') || 'off'),
-            tracer: new BrowserConsoleTracer(extension.id),
-        }),
-        environmentFilter,
-    })
-
-    controller.clientEntries
-        .pipe(
-            switchMap(clients => merge(clients)),
-            switchMap(client => client.client.state)
-        )
-        .subscribe(state => {
-            console.log(
-                '%c CXP client %s %c',
-                'background-color:' + clientStateToColor(state),
-                clientStateToName(state),
-                RESET_COLOR
-            )
-        })
-    controller.showMessages.subscribe(({ message }) => alert(message))
-    controller.showMessageRequests.subscribe(({ message, actions, resolve }) => {
-        if (!actions || actions.length === 0) {
-            alert(message)
-            resolve(null)
-            return
-        }
-        const value = prompt(
-            `${message}\n\nValid responses: ${actions.map(({ title }) => JSON.stringify(title)).join(', ')}`,
-            actions[0].title
-        )
-        resolve(actions.find(a => a.title === value) || null)
-    })
-
-    // Print window/logMessage log messages to the browser devtools console.
-    controller.logMessages.subscribe(({ message, extension }) => {
-        console.log(
-            '%c CXP %s %c %s',
-            'font-weight:bold;background-color:#eee',
-            extension,
-            'font-weight:normal;background-color:unset',
-            message
-        )
-    })
-
-    // Debug helpers.
-    if (localStorage.getItem('traceCXP') === 'verbose') {
-        // Debug helper: log environment changes.
-        controller.environment.environment.subscribe(environment =>
-            console.log(
-                '%c CXP env %c %o',
-                'font-weight:bold;background-color:#999;color:white',
-                'background-color:unset;color:unset;font-weight:unset',
-                environment
-            )
-        )
-
-        // Debug helpers: e.g., just run `cxp` in devtools to get a reference to this controller. (If multiple
-        // controllers are created, this points to the last one created.)
-        if (!('cxp' in window)) {
-            Object.defineProperty(window, 'cxp', {
-                get: () => controller,
-            })
-        }
-        if (!('cxpenv' in window)) {
-            Object.defineProperty(window, 'cxpenv', {
-                get: () => controller.environment.environment.value,
-            })
-        }
-    }
-
-    return controller
-}
-
-/**
- * Adds the manifest to CXP extensions in the CXP environment, so we can consult it in the createMessageTransports
- * callback (to know how to communicate with or run the extension).
- */
-export interface CXPExtensionWithManifest extends CXPExtension {
-    isEnabled: boolean
-    manifest: SourcegraphExtension | null | ErrorLike
-}
-
 const createPlatformMessageTransports = (() => {
     const CONTROL = chrome.runtime.connect({ name: 'CONTROL' })
     return ({ id, platform }) =>
@@ -227,7 +55,7 @@ const createPlatformMessageTransports = (() => {
         })
 })()
 
-function createMessageTransports(
+export function createMessageTransports(
     extension: CXPExtensionWithManifest,
     options: ClientOptions
 ): Promise<MessageTransports> {

@@ -6,7 +6,9 @@ import {
     ConfigurationSubject,
     gqlToCascade,
 } from '@sourcegraph/extensions-client-common/lib/settings'
+import CaretDown from '@sourcegraph/icons/lib/CaretDown'
 import Loader from '@sourcegraph/icons/lib/Loader'
+import Menu from '@sourcegraph/icons/lib/Menu'
 import Warning from '@sourcegraph/icons/lib/Warning'
 import * as JSONC from '@sqs/jsonc-parser'
 import { applyEdits } from '@sqs/jsonc-parser'
@@ -191,8 +193,13 @@ export function createExtensionsContextController(): ExtensionsContextController
                 )
             ),
         icons: {
-            Loader: Loader as React.ComponentType<{ className: 'icon-inline' }>,
-            Warning: Warning as React.ComponentType<{ className: 'icon-inline' }>,
+            Loader: Loader as React.ComponentType<{ className: string; onClick?: () => void }>,
+            Warning: Warning as React.ComponentType<{ className: string; onClick?: () => void }>,
+            CaretDown: CaretDown as React.ComponentType<{ className: string; onClick?: () => void }>,
+            Menu: Menu as React.ComponentType<{ className: string; onClick?: () => void }>,
+        },
+        forceUpdateTooltip: () => {
+            // TODO(sqs): implement tooltips on the browser extension
         },
     })
 }

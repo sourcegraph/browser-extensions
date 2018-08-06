@@ -1,15 +1,14 @@
-import * as React from 'react'
-
 import { ExtensionsProps } from '@sourcegraph/extensions-client-common/lib/context'
+import { ContributedActionsNavItems } from '@sourcegraph/extensions-client-common/lib/contributions/ContributedActions'
 import { Settings } from '@sourcegraph/extensions-client-common/lib/copypasta'
+import { CXPControllerProps } from '@sourcegraph/extensions-client-common/lib/cxp/controller'
 import { ConfigurationSubject } from '@sourcegraph/extensions-client-common/lib/settings'
 import { ContributableMenu } from 'cxp/module/protocol'
+import * as React from 'react'
 import { Subscription } from 'rxjs'
 import storage from '../../extension/storage'
-import { CXP_CONTROLLER } from '../backend/cxp'
 import { setServerUrls } from '../util/context'
 import { CodeIntelStatusIndicator } from './CodeIntelStatusIndicator'
-import { ContributedActions, Contributions, CXPControllerProps } from './CXPCommands'
 import { OpenOnSourcegraph } from './OpenOnSourcegraph'
 
 export interface ButtonProps {
@@ -32,19 +31,8 @@ interface CodeViewToolbarProps extends ExtensionsProps<ConfigurationSubject, Set
     buttonProps: ButtonProps
 }
 
-interface CodeViewToolbarState {
-    contributions: Contributions
-}
-
-export class CodeViewToolbar extends React.Component<CodeViewToolbarProps, CodeViewToolbarState> {
+export class CodeViewToolbar extends React.Component<CodeViewToolbarProps> {
     private subscriptions = new Subscription()
-
-    constructor(props: CodeViewToolbarProps) {
-        super(props)
-        this.state = {
-            contributions: {},
-        }
-    }
 
     public componentWillUnmount(): void {
         this.subscriptions.unsubscribe()
@@ -56,22 +44,18 @@ export class CodeViewToolbar extends React.Component<CodeViewToolbarProps, CodeV
                 setServerUrls(items.serverUrls.newValue)
             }
         })
-
-        this.subscriptions.add(
-            CXP_CONTROLLER.registries.contribution.contributions.subscribe(contributions => {
-                this.setState(prevState => ({ contributions }))
-            })
-        )
     }
 
     public render(): JSX.Element | null {
         return (
             <div style={{ display: 'inline-flex', verticalAlign: 'middle', alignItems: 'center' }}>
-                <ContributedActions
-                    menu={ContributableMenu.EditorTitle}
-                    contributions={this.state.contributions}
-                    cxpController={this.props.cxpController}
-                />
+                <ul className="nav">
+                    <ContributedActionsNavItems
+                        menu={ContributableMenu.EditorTitle}
+                        cxpController={this.props.cxpController}
+                        extensions={this.props.extensions}
+                    />
+                </ul>
                 <CodeIntelStatusIndicator
                     key="code-intel-status"
                     userIsSiteAdmin={false}

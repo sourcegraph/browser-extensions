@@ -80,7 +80,6 @@ $theme-colors-light: (
 @import './components/alerts';
 @import './components/symbols';
 @import './components/codeIntelStatusIndicator';
-@import './components/CXPCommands';
 @import 'node_modules/@sourcegraph/codeintellify/lib/HoverOverlay.scss';
 @import 'node_modules/@sourcegraph/react-loading-spinner/lib/LoadingSpinner.css';
 @import 'node_modules/@sourcegraph/extensions-client-common/lib/components/Toggle.css';
