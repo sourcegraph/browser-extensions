@@ -9,7 +9,6 @@ import {
 } from '@sourcegraph/codeintellify'
 import { propertyIsDefined } from '@sourcegraph/codeintellify/lib/helpers'
 import { HoverMerged } from '@sourcegraph/codeintellify/lib/types'
-import deepmerge from 'deepmerge'
 import { identity } from 'lodash'
 import mermaid from 'mermaid'
 import * as React from 'react'
@@ -20,12 +19,7 @@ import { Disposable } from 'vscode-languageserver/lib/main'
 import { findElementWithOffset, getTargetLineAndOffset, GitHubBlobUrl } from '.'
 import storage from '../../extension/storage'
 import { getContext } from '../backend/context'
-import {
-    applyDecoration,
-    configuredExtensionToCXPExtensionWithManifest,
-    CXP_CONTROLLER,
-    CXP_EXTENSIONS_CONTEXT_CONTROLLER,
-} from '../backend/cxp'
+import { applyDecoration, CXP_CONTROLLER, CXP_EXTENSIONS_CONTEXT_CONTROLLER, rootAndComponent } from '../backend/cxp'
 import { queryGraphQL } from '../backend/graphql'
 import { createJumpURLFetcher, fetchHover, JumpURLLocation, toTextDocumentIdentifier } from '../backend/lsp'
 import { Alerts } from '../components/Alerts'
@@ -736,24 +730,20 @@ function injectBlobAnnotators({
         forkJoin(resolveRev({ repoPath, rev }).pipe(retryWhenCloneInProgressError()), gitHubFileContent(gitHubState))
             .pipe(withLatestFrom(CXP_EXTENSIONS_CONTEXT_CONTROLLER.viewerConfiguredExtensions))
             .subscribe(([[commitID, fileContent], configuredExtensions]) => {
-                CXP_CONTROLLER.setEnvironment(
-                    deepmerge(
-                        CXP_CONTROLLER.environment.environment.value,
-                        {
-                            extensions: configuredExtensions.map(configuredExtensionToCXPExtensionWithManifest),
-                            root: mkUri({ repoPath, commitID }),
-                            component: {
-                                document: {
-                                    uri: mkUriPath({ repoPath, commitID, filePath }),
-                                    languageId: getModeFromPath(filePath),
-                                    version: 0,
-                                    text: fileContent,
-                                },
-                            },
+                rootAndComponent.next({
+                    root: mkUri({ repoPath, commitID }),
+                    component: {
+                        document: {
+                            uri: mkUriPath({ repoPath, commitID, filePath }),
+                            // TODO(chris) handle unknown modes
+                            languageId: getModeFromPath(filePath) || 'could not determine mode',
+                            version: 0,
+                            text: fileContent,
                         },
-                        { arrayMerge: (dest, source) => source }
-                    )
-                )
+                        selections: [],
+                        visibleRanges: [],
+                    },
+                })
 
                 CXP_CONTROLLER.registries.textDocumentDecoration
                     .getDecorations({

@@ -1,15 +1,16 @@
+import { ConfiguredExtension } from '@sourcegraph/extensions-client-common/lib/extensions/extension'
 import { SourcegraphExtension } from '@sourcegraph/extensions-client-common/lib/schema/extension.schema'
 import { applyEdits } from '@sqs/jsonc-parser'
 import { setProperty } from '@sqs/jsonc-parser/lib/edit'
 import { ClientOptions, ClientState } from 'cxp/lib/client/client'
 import { Controller } from 'cxp/lib/environment/controller'
 import { Environment } from 'cxp/lib/environment/environment'
-import { Extension as CXPExtension } from 'cxp/lib/environment/extension'
+import { Extension, Extension as CXPExtension } from 'cxp/lib/environment/extension'
 import { MessageTransports } from 'cxp/lib/jsonrpc2/connection'
 import { BrowserConsoleTracer, Trace } from 'cxp/lib/jsonrpc2/trace'
 import { createWebSocketMessageTransports } from 'cxp/lib/jsonrpc2/transports/browserWebSocket'
 import { TextDocumentDecoration } from 'cxp/lib/protocol'
-import { merge } from 'rxjs'
+import { combineLatest, merge, ReplaySubject } from 'rxjs'
 import { switchMap } from 'rxjs/operators'
 import { Disposable } from 'vscode-languageserver'
 import storage from '../../extension/storage'
@@ -21,17 +22,19 @@ export const CXP_CONTROLLER = createController()
 
 export const CXP_EXTENSIONS_CONTEXT_CONTROLLER = createExtensionsContextController()
 
-export const configuredExtensionToCXPExtensionWithManifest = x => ({
+export const rootAndComponent = new ReplaySubject<Pick<Environment<Extension>, 'root' | 'component'>>(1)
+
+export const configuredExtensionToCXPExtensionWithManifest = (x: ConfiguredExtension) => ({
     id: x.extensionID,
     settings: { merged: x.settings },
     isEnabled: x.isEnabled,
     manifest: x.manifest,
 })
 
-CXP_EXTENSIONS_CONTEXT_CONTROLLER.viewerConfiguredExtensions.subscribe(
-    configuredExtensions => {
+combineLatest(CXP_EXTENSIONS_CONTEXT_CONTROLLER.viewerConfiguredExtensions, rootAndComponent).subscribe(
+    ([configuredExtensions, rootAndComponent]) => {
         CXP_CONTROLLER.setEnvironment({
-            ...CXP_CONTROLLER.environment.environment.value,
+            ...rootAndComponent,
             extensions: configuredExtensions.map(configuredExtensionToCXPExtensionWithManifest),
         })
     },
@@ -52,6 +55,8 @@ CXP_CONTROLLER.configurationUpdates.subscribe(
         }),
     err => console.error(err)
 )
+
+// TODO(chris) circle back on SG URL
 
 // TODO(chris) consider putting the environmentFilter in extensions-client-common
 
