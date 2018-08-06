@@ -11,6 +11,7 @@ import { createWebSocketMessageTransports } from 'cxp/module/jsonrpc2/transports
 import { TextDocumentDecoration } from 'cxp/module/protocol'
 import { combineLatest, from, ReplaySubject } from 'rxjs'
 import { take } from 'rxjs/operators'
+import uuid from 'uuid'
 import { Disposable } from 'vscode-languageserver'
 import { sourcegraphURLSubject } from '../util/context'
 import { isErrorLike } from './errors'
@@ -41,20 +42,21 @@ combineLatest(CXP_EXTENSIONS_CONTEXT_CONTROLLER.viewerConfiguredExtensions, root
     }
 )
 
-const createPlatformMessageTransports = (() => {
-    const CONTROL = chrome.runtime.connect({ name: 'CONTROL' })
-    return ({ id, platform }) =>
-        new Promise<MessageTransports>((resolve, reject) => {
-            CONTROL.postMessage({ extensionID: id, platform })
-            CONTROL.onMessage.addListener((response: { portName: string } | { error: any }) => {
-                if ('error' in response) {
-                    reject(response.error)
-                } else {
-                    resolve(createPortMessageTransports(chrome.runtime.connect({ name: response.portName })))
-                }
-            })
-        })
-})()
+const createPlatformMessageTransports = ({ platform }) =>
+    new Promise<MessageTransports>((resolve, reject) => {
+        const channelID = uuid.v4()
+        const port = chrome.runtime.connect({ name: channelID })
+        port.postMessage({ platform })
+        const cb = (response: { error?: any }) => {
+            port.onMessage.removeListener(cb)
+            if (response.error) {
+                reject(response.error)
+            } else {
+                resolve(createPortMessageTransports(port))
+            }
+        }
+        port.onMessage.addListener(cb)
+    })
 
 export function createMessageTransports(
     extension: CXPExtensionWithManifest,
@@ -71,7 +73,7 @@ export function createMessageTransports(
         )
     }
     if (extension.manifest.platform.type === 'websocket') {
-        return createPlatformMessageTransports({ id: extension.id, platform: extension.manifest.platform })
+        return createPlatformMessageTransports({ platform: extension.manifest.platform })
     } else if (extension.manifest.platform.type === 'tcp') {
         // The language server CXP extensions on Sourcegraph are specified as
         // TCP endpoints, but they are also served over WebSockets by lsp-proxy
@@ -92,7 +94,7 @@ export function createMessageTransports(
                 return createWebSocketMessageTransports(new WebSocket(url.href))
             })
     } else if (extension.manifest.platform.type === 'bundle') {
-        return createPlatformMessageTransports({ id: extension.id, platform: extension.manifest.platform })
+        return createPlatformMessageTransports({ platform: extension.manifest.platform })
     } else {
         return Promise.reject(
             new Error(

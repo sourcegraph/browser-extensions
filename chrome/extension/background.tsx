@@ -4,7 +4,6 @@ import '../../app/util/polyfill'
 
 import { without } from 'lodash'
 
-import { ExtensionPlatform } from '@sourcegraph/extensions-client-common/lib/schema/extension.schema'
 import { ajax } from 'rxjs/ajax'
 import initializeCli from '../../app/cli'
 import { setServerUrls, setSourcegraphUrl } from '../../app/util/context'
@@ -313,19 +312,6 @@ function spawnWebWorkerFromURL(url: string): Promise<Worker> {
         .then(response => new Worker(window.URL.createObjectURL(response.response)))
 }
 
-/**
- * Connects a function to a port, request/response style.
- */
-const responding = (respond: (request: any) => Promise<any>): ((port: chrome.runtime.Port) => void) => port => {
-    port.onMessage.addListener(request => {
-        respond(request)
-            .then(response => port.postMessage({ portName: response }))
-            .catch(error => {
-                port.postMessage({ error })
-            })
-    })
-}
-
 // TODO(chris): handle case where the bundle 404s https://github.com/sourcegraph/cxp-js/issues/13
 
 /**
@@ -381,71 +367,43 @@ const connectPortAndSocketIOClient = (port: chrome.runtime.Port, socket: SocketI
     socket.on('disconnect', () => port.disconnect())
 }
 
-/**
- * All communication between CXP clients in content scripts and CXP servers
- * running in web workers (JS bundles) in the background script goes through
- * these handlers, which connect each browser extension port (not to be confused
- * with TCP ports) to a web socket or web worker (depending on the platform
- * type).
- */
-const handlerByName: { [name: string]: ((port: chrome.runtime.Port) => void) } = {
-    // TODO(chris): handle the race condition where two content scripts request the same
-    // extension ID in quick succession. This function will overwrite one of
-    // them, which I think would leak a connection or something.
-    CONTROL: responding(
-        ({
-            extensionID,
-            platform,
-        }: {
-            extensionID: string
-            platform: ExtensionPlatform
-        }): Promise<string | undefined> => {
-            if (extensionID in handlerByName) {
-                return Promise.resolve(extensionID)
-            } else {
-                const portName = 'EXTENSION_' + extensionID
-                switch (platform.type) {
-                    case 'bundle':
-                        return spawnWebWorkerFromURL(platform.url).then(worker => {
-                            handlerByName[portName] = port => connectPortAndWorker(port, worker)
-                            return portName
-                        })
-                    // TODO(chris): use async/await
-                    // TODO(chris): rename to socket.io
-                    case 'websocket':
-                        // TODO(chris): split this into 2 cases once `socket.io` is a
-                        // supported platform type
-                        const interpretWEBSOCKETAsSOCKETIO = false
-                        if (interpretWEBSOCKETAsSOCKETIO) {
-                            return new Promise((resolve, reject) => {
-                                const socket = io.connect(platform.url)
-                                socket.on('connect', () => {
-                                    handlerByName[portName] = port => connectPortAndSocketIOClient(port, socket)
-                                    resolve(portName)
-                                })
-                                socket.on('error', error => console.error(error))
-                            })
-                        } else {
-                            return new Promise((resolve, reject) => {
-                                const webSocket = new WebSocket(platform.url)
-                                webSocket.addEventListener('open', () => {
-                                    handlerByName[portName] = port => connectPortAndWebSocket(port, webSocket)
-                                    resolve(portName)
-                                })
-                            })
-                        }
-                    default:
-                        console.error(
-                            `Cannot connect to extension ${extensionID} of type ${
-                                platform.type
-                            }. Must be either bundle or websocket.`
-                        )
-                        return Promise.resolve(undefined)
+const spawnAndConnect = ({ platform, port }): Promise<void> =>
+    new Promise((resolve, reject) => {
+        switch (platform.type) {
+            case 'bundle':
+                spawnWebWorkerFromURL(platform.url).then(worker => {
+                    connectPortAndWorker(port, worker)
+                    resolve()
+                })
+                break
+            // TODO(chris): rename to socket.io
+            case 'websocket':
+                // TODO(chris): split this into 2 cases once `socket.io` is a
+                // supported platform type
+                const interpretWEBSOCKETAsSOCKETIO = false
+                if (interpretWEBSOCKETAsSOCKETIO) {
+                    const socket = io.connect(platform.url)
+                    socket.on('connect', () => {
+                        connectPortAndSocketIOClient(port, socket)
+                        resolve()
+                    })
+                    socket.on('error', error => console.error(error))
+                } else {
+                    const webSocket = new WebSocket(platform.url)
+                    webSocket.addEventListener('open', () => {
+                        connectPortAndWebSocket(port, webSocket)
+                        resolve()
+                    })
                 }
-            }
+                break
+            default:
+                reject(
+                    `Cannot connect to extension of type ${
+                        platform.type
+                    }. Must be either bundle or websocket. ${platform}`
+                )
         }
-    ),
-}
+    })
 
 // This is the one and only callback that runs when a content script connects to
 // the background script. Content scripts that want a CXP connection can request
@@ -456,17 +414,16 @@ const handlerByName: { [name: string]: ((port: chrome.runtime.Port) => void) } =
 // and responds with a the name of a new port to which the content script can
 // connect in order to speak CXP.
 chrome.runtime.onConnect.addListener(port => {
-    // This is safe (i.e. `port.name` is guaranteed to be in `handlerByName`)
-    // because content scripts are supposed to only connect to ports returned by
-    // the `CONTROL` port (and the `CONTROL` port itself).
-    if (port.name in handlerByName) {
-        handlerByName[port.name](port)
-    } else {
-        console.warn(
-            'Encountered a bug in CXP connection handling! There is no handler for port ' +
-                port.name +
-                '. Available ports: ' +
-                JSON.stringify(Object.keys(handlerByName))
+    const cb = message => {
+        port.onMessage.removeListener(cb)
+        spawnAndConnect({ platform: message.platform, port }).then(
+            () => {
+                port.postMessage({})
+            },
+            error => {
+                port.postMessage({ error })
+            }
         )
     }
+    port.onMessage.addListener(cb)
 })
