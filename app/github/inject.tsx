@@ -129,10 +129,11 @@ function injectCXPGlobalComponents({ sourcegraphURL }: { sourcegraphURL: string 
         statusElem
     )
 
-    const headerElem = document.querySelector('div.HeaderMenu')
+    const headerElem = document.querySelector('ul.user-nav') || document.querySelector('div.HeaderMenu')
     if (headerElem) {
         const commandListElem = document.createElement('div')
-        headerElem.appendChild(commandListElem)
+        commandListElem.style.marginLeft = '10px'
+        headerElem.insertBefore(commandListElem, headerElem.firstChild)
         render(
             <CXPCommandListPopoverButton
                 cxpController={CXP_CONTROLLER}

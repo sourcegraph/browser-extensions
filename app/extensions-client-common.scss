@@ -12,6 +12,18 @@
     --dropdown-border-color: #{$color-light-border};
 }
 
+.popover {
+    max-width: unset !important;
+}
+
+.nav-link {
+    box-shadow: none !important;
+}
+
+.cxp-command-list .list-group-item {
+    padding: 8px 10px;
+}
+
 // Formats an icon so that it appears inline in the text
 // with height matching the text
 .icon-inline {

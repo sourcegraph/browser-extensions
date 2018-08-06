@@ -5,6 +5,7 @@ import {
     ConfigurationCascade,
     ConfigurationSubject,
     gqlToCascade,
+    mergeSettings,
 } from '@sourcegraph/extensions-client-common/lib/settings'
 import CaretDown from '@sourcegraph/icons/lib/CaretDown'
 import Loader from '@sourcegraph/icons/lib/Loader'
@@ -13,14 +14,13 @@ import Warning from '@sourcegraph/icons/lib/Warning'
 import * as JSONC from '@sqs/jsonc-parser'
 import { applyEdits } from '@sqs/jsonc-parser'
 import { removeProperty, setProperty } from '@sqs/jsonc-parser/lib/edit'
-import deepmerge from 'deepmerge'
 import { flatten, isEqual } from 'lodash'
 import { combineLatest, Observable, ReplaySubject, Subject, throwError } from 'rxjs'
 import { distinctUntilChanged, map, mergeMap, switchMap, take } from 'rxjs/operators'
 import storage from '../../extension/storage'
 import { sourcegraphURLSubject } from '../util/context'
 import { getContext } from './context'
-import { createAggregateError } from './errors'
+import { createAggregateError, isErrorLike } from './errors'
 import { queryGraphQL } from './graphql'
 
 // TODO clicking on an extension on the options page needs to take you to your Sourcegraph instance's registry. Right now it takes you nowhere.
@@ -64,7 +64,7 @@ const mergeCascades: (
     ...cascades: ConfigurationCascade<ConfigurationSubject, Settings>[]
 ) => ConfigurationCascade<ConfigurationSubject, Settings> = (...cascades) => ({
     subjects: flatten(cascades.map(cascade => cascade.subjects)),
-    merged: cascades.map(cascade => cascade.merged).reduce((acc, obj) => deepmerge(acc, obj), {}),
+    merged: mergeSettings(cascades.map(cascade => cascade.merged).filter((v): v is Settings => !!v && !isErrorLike(v))),
 })
 
 // copy pasta from web/src/user/settings/backend.tsx
