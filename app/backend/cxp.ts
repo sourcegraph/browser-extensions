@@ -21,17 +21,18 @@ export const CXP_CONTROLLER = createController()
 
 export const CXP_EXTENSIONS_CONTEXT_CONTROLLER = createExtensionsContextController()
 
+export const configuredExtensionToCXPExtensionWithManifest = x => ({
+    id: x.extensionID,
+    settings: { merged: x.settings },
+    isEnabled: x.isEnabled,
+    manifest: x.manifest,
+})
+
 CXP_EXTENSIONS_CONTEXT_CONTROLLER.viewerConfiguredExtensions.subscribe(
     configuredExtensions => {
-        console.log('setEnvironment with extensions', configuredExtensions)
         CXP_CONTROLLER.setEnvironment({
             ...CXP_CONTROLLER.environment.environment.value,
-            extensions: configuredExtensions.map(x => ({
-                id: x.extensionID,
-                settings: { merged: x.settings },
-                isEnabled: x.isEnabled,
-                manifest: x.manifest,
-            })),
+            extensions: configuredExtensions.map(configuredExtensionToCXPExtensionWithManifest),
         })
     },
     err => {

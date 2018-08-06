@@ -20,7 +20,12 @@ import { Disposable } from 'vscode-languageserver/lib/main'
 import { findElementWithOffset, getTargetLineAndOffset, GitHubBlobUrl } from '.'
 import storage from '../../extension/storage'
 import { getContext } from '../backend/context'
-import { applyDecoration, CXP_CONTROLLER, CXP_EXTENSIONS_CONTEXT_CONTROLLER } from '../backend/cxp'
+import {
+    applyDecoration,
+    configuredExtensionToCXPExtensionWithManifest,
+    CXP_CONTROLLER,
+    CXP_EXTENSIONS_CONTEXT_CONTROLLER,
+} from '../backend/cxp'
 import { queryGraphQL } from '../backend/graphql'
 import { createJumpURLFetcher, fetchHover, JumpURLLocation, toTextDocumentIdentifier } from '../backend/lsp'
 import { Alerts } from '../components/Alerts'
@@ -717,8 +722,8 @@ function injectBlobAnnotators({
         // now)
 
         const gitHubState = getGitHubState(window.location.href) as GitHubBlobUrl
-        // const fileContentStub = 'hmm need to fetch text'
 
+        // TODO(chris) handle errors
         const gitHubFileContent = ({ owner, repoName, filePath }) =>
             from(
                 fetch(`https://api.github.com/repos/${owner}/${repoName}/contents/${filePath}`)
@@ -726,66 +731,52 @@ function injectBlobAnnotators({
                     .then(response => window.atob(response.content))
             )
 
-        forkJoin(
-            resolveRev({ repoPath, rev }).pipe(retryWhenCloneInProgressError()),
-            gitHubFileContent(gitHubState)
-        ).subscribe(([commitID, fileContent]) => {
-            console.log(
-                'setEnvironment with root and component (THIS MUST HAPPEN BEFORE "setEnvironment with extensions"',
-                {
-                    root: mkUri({ repoPath, commitID }),
-                    component: {
-                        document: {
-                            uri: mkUriPath({ repoPath, commitID, filePath }),
-                            languageId: getModeFromPath(filePath),
-                            version: 0,
-                            text: fileContent,
+        forkJoin(resolveRev({ repoPath, rev }).pipe(retryWhenCloneInProgressError()), gitHubFileContent(gitHubState))
+            .pipe(withLatestFrom(CXP_EXTENSIONS_CONTEXT_CONTROLLER.viewerConfiguredExtensions))
+            .subscribe(([[commitID, fileContent], configuredExtensions]) => {
+                CXP_CONTROLLER.setEnvironment(
+                    deepmerge(CXP_CONTROLLER.environment.environment.value, {
+                        extensions: configuredExtensions.map(configuredExtensionToCXPExtensionWithManifest),
+                        root: mkUri({ repoPath, commitID }),
+                        component: {
+                            document: {
+                                uri: mkUriPath({ repoPath, commitID, filePath }),
+                                languageId: getModeFromPath(filePath),
+                                version: 0,
+                                text: fileContent,
+                            },
                         },
-                    },
-                }
-            )
-            CXP_CONTROLLER.setEnvironment(
-                deepmerge(CXP_CONTROLLER.environment.environment.value, {
-                    root: mkUri({ repoPath, commitID }),
-                    component: {
-                        document: {
-                            uri: mkUriPath({ repoPath, commitID, filePath }),
-                            languageId: getModeFromPath(filePath),
-                            version: 0,
-                            text: fileContent,
-                        },
-                    },
-                })
-            )
+                    })
+                )
 
-            let oldDecorations: Disposable[] = []
-            CXP_CONTROLLER.registries.textDocumentDecoration
-                .getDecorations({
-                    textDocument: toTextDocumentIdentifier({
-                        commitID,
-                        filePath: filePath || 'no file path, this is a bug in inject.tsx',
-                        repoPath,
-                    }),
-                })
-                .subscribe(decorations => {
-                    for (const old of oldDecorations) {
-                        old.dispose()
-                    }
-                    oldDecorations = []
-                    for (const decoration of decorations || []) {
-                        try {
-                            oldDecorations.push(
-                                applyDecoration({
-                                    fileElement: files[0],
-                                    decoration,
-                                })
-                            )
-                        } catch (e) {
-                            console.warn(e)
+                let oldDecorations: Disposable[] = []
+                CXP_CONTROLLER.registries.textDocumentDecoration
+                    .getDecorations({
+                        textDocument: toTextDocumentIdentifier({
+                            commitID,
+                            filePath,
+                            repoPath,
+                        }),
+                    })
+                    .subscribe(decorations => {
+                        for (const old of oldDecorations) {
+                            old.dispose()
                         }
-                    }
-                })
-        })
+                        oldDecorations = []
+                        for (const decoration of decorations || []) {
+                            try {
+                                oldDecorations.push(
+                                    applyDecoration({
+                                        fileElement: files[0],
+                                        decoration,
+                                    })
+                                )
+                            } catch (e) {
+                                console.warn(e)
+                            }
+                        }
+                    })
+            })
     }
 
     const mutationObserver = new MutationObserver(mutations => {
@@ -826,55 +817,6 @@ function injectBlobAnnotators({
         characterData: false,
     })
 }
-
-// TODO(chris) consider bringing back fetchFileContent or using the code host's
-// API to fill the Component's text
-
-// /**
-//  * Queries GraphQL for the content of a file.
-//  */
-// function fetchFileContent({
-//     repoPath,
-//     commitID,
-//     filePath,
-// }: {
-//     repoPath: string
-//     commitID: string
-//     filePath: string | undefined
-// }): Promise<string> {
-//     return queryGraphQL(
-//         getContext({ repoKey: repoPath, isRepoSpecific: true }),
-//         `
-//             query Blob(
-//                 $repoPath: String!
-//                 $commitID: String!
-//                 $filePath: String!
-//             ) {
-//                 repository(uri: $repoPath) {
-//                     commit(rev: $commitID) {
-//                         file(path: $filePath) {
-//                             content
-//                         }
-//                     }
-//                 }
-//             }
-//         `,
-//         { repoPath, commitID, filePath }
-//     )
-//         .toPromise()
-//         .then(response => {
-//             const content =
-//                 response.data &&
-//                 response.data.repository &&
-//                 response.data.repository.commit &&
-//                 response.data.repository.commit.file &&
-//                 response.data.repository.commit.file.content
-//             if (!content) {
-//                 throw new Error(`Could not fetch file content for ${repoPath} ${commitID} ${filePath}`)
-//             }
-//             return content
-//         })
-// }
 
 function injectBlobAnnotatorsOld(): void {
     const { repoPath, isDelta, isPullRequest, rev, isCommit, filePath, position } = parseURL()

@@ -152,24 +152,20 @@ function fetchViewerConfiguration(): Observable<GQL.IConfigurationCascade> {
     )
 }
 
-// Eagerly fetch the configurationCascade ReplaySubject to warm it up.
+// Eagerly fetch configuration to warm up the configurationCascade ReplaySubject.
 refreshConfiguration()
     .toPromise()
     .then(() => void 0, err => console.error(err))
 
-// not really copy pasta
-
 export function createExtensionsContextController(): ExtensionsContextController<ConfigurationSubject> {
     return new ExtensionsContextController<ConfigurationSubject>({
-        // TODO copy https://sourcegraph.sgdev.org/github.com/sourcegraph/sourcegraph/-/blob/web/src/user/settings/backend.tsx
-        // try converting it with gqlToCascade
         configurationCascade: combineLatest(gqlConfigurationCascade, storageConfigurationCascade).pipe(
             map(([gqlCascade, storageCascade]) => mergeCascades(gqlToCascade(gqlCascade), storageCascade)),
             distinctUntilChanged((a, b) => isEqual(a, b))
         ),
-        // TODO(chris) set config in local storage, then figure out what happens
-        // when this fails? a user might not have permission. Or maybe we limit
-        // to Client (and ban User, Org, and Site).
+        // TODO(chris) figure out what happens when this fails. A user might not
+        // have permission. Or maybe we should restrict updates to the Client
+        // subject (and ban User, Org, and Site).
         updateExtensionSettings: (subjectID, { extensionID, enabled, remove }) => {
             if (subjectID !== 'Client') {
                 return throwError('Cannot update settings for ' + subjectID + '.')
