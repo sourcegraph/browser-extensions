@@ -4,7 +4,7 @@ import { InitializeResult } from 'cxp/module/protocol'
 import { HoverMerged } from 'cxp/module/types/hover'
 import { Observable, of } from 'rxjs'
 import { ajax, AjaxResponse } from 'rxjs/ajax'
-import { catchError, map, mergeMap, tap } from 'rxjs/operators'
+import { catchError, map, mergeMap, take, tap } from 'rxjs/operators'
 import { Definition, TextDocumentIdentifier } from 'vscode-languageserver-types'
 import { ServerCapabilities, TextDocumentPositionParams } from 'vscode-languageserver/lib/main'
 import { AbsoluteRepoFile, AbsoluteRepoFilePosition, AbsoluteRepoLanguageFile, parseRepoURI } from '../repo'
@@ -114,38 +114,34 @@ const toTextDocumentPositionParams = (pos: AbsoluteRepoFilePosition): TextDocume
 })
 
 export const fetchHover = (pos: AbsoluteRepoFilePosition): Observable<HoverMerged | null> =>
-    useCXP
-        .take(1)
-        .pipe(
-            mergeMap(
-                v =>
-                    v
-                        ? CXP_CONTROLLER.registries.textDocumentHover
-                              .getHover(toTextDocumentPositionParams(pos))
-                              .pipe(map(hover => (hover === null ? HoverMerged.from([]) : hover)))
-                        : memoizeObservable((ctx: AbsoluteRepoFilePosition) =>
-                              sendLSPRequest('textDocument/hover', toTextDocumentPositionParams(ctx), ctx)
-                          )(pos)
-            )
+    useCXP.pipe(
+        take(1),
+        mergeMap(
+            v =>
+                v
+                    ? CXP_CONTROLLER.registries.textDocumentHover
+                          .getHover(toTextDocumentPositionParams(pos))
+                          .pipe(map(hover => (hover === null ? HoverMerged.from([]) : hover)))
+                    : memoizeObservable((ctx: AbsoluteRepoFilePosition) =>
+                          sendLSPRequest('textDocument/hover', toTextDocumentPositionParams(ctx), ctx)
+                      )(pos)
         )
+    )
 
 export const fetchDefinition = (pos: AbsoluteRepoFilePosition): Observable<Definition> =>
-    useCXP
-        .take(1)
-        .pipe(
-            mergeMap(
-                v =>
-                    v
-                        ? CXP_CONTROLLER.registries.textDocumentDefinition.getLocation(
-                              toTextDocumentPositionParams(pos)
+    useCXP.pipe(
+        take(1),
+        mergeMap(
+            v =>
+                v
+                    ? CXP_CONTROLLER.registries.textDocumentDefinition.getLocation(toTextDocumentPositionParams(pos))
+                    : memoizeObservable<AbsoluteRepoFilePosition, Definition>((ctx: AbsoluteRepoFilePosition) =>
+                          sendLSPRequest('textDocument/definition', toTextDocumentPositionParams(ctx), ctx).pipe(
+                              map(definition => definition as any)
                           )
-                        : memoizeObservable<AbsoluteRepoFilePosition, Definition>((ctx: AbsoluteRepoFilePosition) =>
-                              sendLSPRequest('textDocument/definition', toTextDocumentPositionParams(ctx), ctx).pipe(
-                                  map(definition => definition as any)
-                              )
-                          )(pos)
-            )
+                      )(pos)
         )
+    )
 
 export function fetchJumpURL(pos: AbsoluteRepoFilePosition): Observable<string | null> {
     return fetchDefinition(pos).pipe(
