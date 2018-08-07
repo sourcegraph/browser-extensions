@@ -1,3 +1,5 @@
+// stylelint-disable
+
 // Imports, styles, and CSS variables for @sourcegraph/extensions-client-common.
 @import 'node_modules/@sourcegraph/extensions-client-common/lib/components/PopoverButton.css';
 @import 'node_modules/@sourcegraph/extensions-client-common/lib/components/Toggle.css';
@@ -18,10 +20,34 @@
 
 .nav-link {
     box-shadow: none !important;
+    color: var(--body-color);
+    display: flex;
+    align-items: center;
+    padding: 0.3rem 0.5rem;
+
+    .icon-inline {
+        margin-right: 4px;
+    }
 }
 
 .cxp-command-list .list-group-item {
     padding: 8px 10px;
+}
+
+.cxp-command-list .form {
+    display: flex;
+}
+
+#cxp-command-list__input {
+    flex: 1;
+}
+
+.toggle--off::-webkit-slider-runnable-track {
+    color: #eee;
+}
+.toggle--off::-webkit-slider-thumb {
+    background-color: black;
+    opacity: 0.2;
 }
 
 // Formats an icon so that it appears inline in the text

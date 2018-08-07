@@ -114,35 +114,64 @@ function injectCodeIntelligence({ sourcegraphURL }: { sourcegraphURL: string }):
 }
 
 function injectCXPGlobalComponents({ sourcegraphURL }: { sourcegraphURL: string }): void {
-    const statusElem = document.createElement('div')
-    statusElem.id = 'cxp-global'
-    statusElem.style.position = 'fixed'
-    statusElem.style.bottom = '0'
-    statusElem.style.right = '0'
-    document.body.appendChild(statusElem)
-    render(
-        <CXPStatusPopover
-            cxpController={CXP_CONTROLLER}
-            caretIcon={CXP_EXTENSIONS_CONTEXT_CONTROLLER.context.icons.CaretDown}
-            loaderIcon={CXP_EXTENSIONS_CONTEXT_CONTROLLER.context.icons.Loader}
-        />,
-        statusElem
-    )
+    if (!document.getElementById('cxp-status')) {
+        const statusElem = document.createElement('div')
+        statusElem.id = 'cxp-status'
+        statusElem.style.position = 'fixed'
+        statusElem.style.bottom = '0'
+        statusElem.style.right = '0'
+        document.body.appendChild(statusElem)
+        render(
+            <CXPStatusPopover
+                cxpController={CXP_CONTROLLER}
+                caretIcon={CXP_EXTENSIONS_CONTEXT_CONTROLLER.context.icons.CaretDown}
+                loaderIcon={CXP_EXTENSIONS_CONTEXT_CONTROLLER.context.icons.Loader}
+            />,
+            statusElem
+        )
+    }
 
     const headerElem = document.querySelector('ul.user-nav') || document.querySelector('div.HeaderMenu')
-    if (headerElem) {
+    if (headerElem && !document.getElementById('cxp-command-list')) {
         const commandListElem = document.createElement('div')
         commandListElem.style.marginLeft = '10px'
+        commandListElem.id = 'cxp-command-list'
         headerElem.insertBefore(commandListElem, headerElem.firstChild)
         render(
             <CXPCommandListPopoverButton
                 cxpController={CXP_CONTROLLER}
-                menu={ContributableMenu.GlobalNav}
+                menu={ContributableMenu.CommandPalette}
                 extensions={CXP_EXTENSIONS_CONTEXT_CONTROLLER}
             />,
             commandListElem
         )
     }
+
+    // HACK: use github's tooltips
+    document.addEventListener('mouseover', e => {
+        const elem = e.target as HTMLElement
+        if (elem.dataset && elem.dataset.tooltip && !elem.classList.contains('tooltipped')) {
+            elem.classList.add('tooltipped', 'tooltipped-nw')
+            elem.setAttribute('aria-label', elem.dataset.tooltip)
+
+            elem.addEventListener('mouseleave', e => {
+                const elem = e.currentTarget as HTMLElement
+                elem.blur()
+            })
+        }
+    })
+    document.addEventListener('click', e => {
+        const elem = e.target as HTMLElement
+        if (elem.dataset && elem.dataset.tooltip && elem.classList.contains('tooltipped')) {
+            setTimeout(() => {
+                if (elem && elem.dataset && elem.dataset.tooltip) {
+                    elem.setAttribute('aria-label', elem.dataset.tooltip)
+                } else {
+                    elem.setAttribute('aria-label', '')
+                }
+            }, 200)
+        }
+    })
 }
 
 /**
