@@ -79,6 +79,17 @@ function injectApplication(): void {
                 styleSheet.href = getURL('css/style.bundle.css')
                 document.head.appendChild(styleSheet)
             }
+
+            // GitHub uses a different version of Bootstrap CSS that conflicts
+            // with ours.
+            if (!isGitHub) {
+                const styleSheet = document.createElement('link') as HTMLLinkElement
+                styleSheet.id = 'ext-style-sheet'
+                styleSheet.rel = 'stylesheet'
+                styleSheet.type = 'text/css'
+                styleSheet.href = getURL('css/twitterbootstrap.bundle.css')
+                document.head.appendChild(styleSheet)
+            }
         }
 
         if (isGitHub || isGitHubEnterprise) {
