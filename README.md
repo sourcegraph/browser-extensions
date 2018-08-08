@@ -8,8 +8,6 @@
 [![firefox users](https://img.shields.io/amo/users/sourcegraph.svg)](https://addons.mozilla.org/en-US/firefox/addon/sourcegraph/)
 [![firefox rating](https://img.shields.io/amo/rating/sourcegraph.svg)](https://addons.mozilla.org/en-US/firefox/addon/sourcegraph/)
 
-test patch
-
 ## Overview
 
 The Sourcegraph browser extension adds tooltips to code on GitHub, Phabricator, and Bitbucket.
