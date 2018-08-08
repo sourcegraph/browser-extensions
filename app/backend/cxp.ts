@@ -18,6 +18,8 @@ import { isErrorLike } from './errors'
 import { createExtensionsContextController } from './extensions'
 import { createPortMessageTransports } from './PortMessageTransports'
 
+// TODO(chris) create the controllers in an inject function rather than at the
+// top-level
 export const CXP_EXTENSIONS_CONTEXT_CONTROLLER = createExtensionsContextController()
 export const CXP_CONTROLLER = createCXPController(CXP_EXTENSIONS_CONTEXT_CONTROLLER.context, createMessageTransports)
 

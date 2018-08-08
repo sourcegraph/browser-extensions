@@ -71,6 +71,8 @@ const buttonProps = {
 }
 
 function refreshModules(): void {
+    // TODO(chris) move this clean-up code closer to where the elements are
+    // created and wrap them in a Disposable.
     for (const el of Array.from(document.getElementsByClassName('sourcegraph-app-annotator'))) {
         el.remove()
     }
