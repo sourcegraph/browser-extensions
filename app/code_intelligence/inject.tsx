@@ -60,6 +60,7 @@ function createCodeIntelligenceContainer(options?: { repoPath: string }): { hove
                 map(hover => (hover ? (hover as HoverMerged) : hover))
             ),
         fetchJumpURL,
+        logTelemetryEvent: () => eventLogger.logCodeIntelligenceEvent(),
     })
 
     const Link: LinkComponent = ({ to, children, ...rest }) => (
