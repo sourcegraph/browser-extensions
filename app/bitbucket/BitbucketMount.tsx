@@ -14,7 +14,7 @@ interface Props {
 
 interface State {
     element?: HTMLElement
-    event?: Pick<MouseEvent, 'srcElement'>
+    event?: MouseEvent
     docked?: boolean
     revState?: {
         baseRev: string

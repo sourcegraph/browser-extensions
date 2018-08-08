@@ -20,7 +20,6 @@ export default {
         phabricator: buildEntry(pageEntry, '../app/phabricator/extension.tsx'),
 
         bootstrap: path.join(__dirname, '../node_modules/bootstrap/dist/css/bootstrap.css'),
-        twitterbootstrap: path.join(__dirname, '../app/twitterbootstrap.scss'),
         style: path.join(__dirname, '../app/app.scss'),
     },
     output: {
