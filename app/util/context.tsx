@@ -1,7 +1,10 @@
+import { get } from 'lodash'
 import * as path from 'path'
+import { ReplaySubject } from 'rxjs'
 import { isPhabricator } from '../../app/context'
 import * as runtime from '../../extension/runtime'
 import storage from '../../extension/storage'
+import { featureFlags } from '../../extension/types'
 import { EventLogger } from '../tracking/EventLogger'
 
 export let eventLogger = new EventLogger()
@@ -18,7 +21,24 @@ export let repositoryFileTreeEnabled = false
 
 export let inlineSymbolSearchEnabled = false
 
-export let useCXP = false
+// TODO(chris) consider converting the others to observables too
+export const useCXP = new ReplaySubject<boolean>(1)
+storage.getSync(items => useCXP.next(!!items.featureFlags.CXP))
+storage.onChanged(changes => {
+    const oldVal = get(changes.featureFlags, ['oldValue', 'CXP'], featureFlags.CXP.default)
+    const newVal = get(changes.featureFlags, ['newValue', 'CXP'], featureFlags.CXP.default)
+    if (changes.featureFlags && oldVal !== newVal) {
+        useCXP.next(newVal)
+    }
+})
+
+export const sourcegraphURLSubject = new ReplaySubject<string>(1)
+storage.getSync(items => sourcegraphURLSubject.next(items.sourcegraphURL))
+storage.onChanged(changes => {
+    if (changes.sourcegraphURL) {
+        sourcegraphURLSubject.next(changes.sourcegraphURL.newValue)
+    }
+})
 
 interface UrlCache {
     [key: string]: string
@@ -38,7 +58,6 @@ if (window.SG_ENV === 'EXTENSION') {
         repositoryFileTreeEnabled = items.repositoryFileTreeEnabled
 
         inlineSymbolSearchEnabled = items.inlineSymbolSearchEnabled
-        useCXP = items.useCXP
     })
 }
 
@@ -85,10 +104,6 @@ export function setRepositoryFileTreeEnabled(enabled: boolean): void {
 
 export function setInlineSymbolSearchEnabled(enabled: boolean): void {
     inlineSymbolSearchEnabled = enabled
-}
-
-export function setUseCXP(value: boolean): void {
-    useCXP = value
 }
 
 /**

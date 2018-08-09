@@ -14,7 +14,6 @@ import {
     setRepositoryFileTreeEnabled,
     setServerUrls,
     setSourcegraphUrl,
-    setUseCXP,
 } from '../../app/util/context'
 import { getURL } from '../../extension/extension'
 import * as runtime from '../../extension/runtime'
@@ -111,7 +110,6 @@ function injectApplication(): void {
             setServerUrls(items.serverUrls)
             injectBitbucketServer()
         }
-        setUseCXP(items.useCXP === undefined ? false : items.useCXP)
     }
 
     storage.getSync(handleGetStorage)

@@ -102,7 +102,7 @@ function injectCodeIntelligence(): void {
 
 function inject(): void {
     featureFlags
-        .isEnabled('newTooltips')
+        .get('newTooltips')
         .then(isEnabled => {
             if (isEnabled) {
                 injectCodeIntelligence()

@@ -1,3 +1,5 @@
+import { mapValues } from 'lodash'
+
 export interface RepoLocations {
     [key: string]: string
 }
@@ -7,17 +9,36 @@ export interface PhabricatorMapping {
     path: string
 }
 
+export type Feature = 'newTooltips' | 'CXP'
+
+/**
+ * Information about a feature flag.
+ */
+export interface FeatureFlag {
+    /**
+     * This is shown next to the check box in the options UI.
+     */
+    title: string
+    default: boolean
+}
+
 /**
  * The feature flags available.
  */
-export interface FeatureFlags {
-    newTooltips: boolean
+export type FeatureFlags = Record<Feature, FeatureFlag>
+
+export const featureFlags: FeatureFlags = {
+    newTooltips: {
+        title: 'Pretty hover tooltips',
+        default: true,
+    },
+    CXP: {
+        title: 'Use new LSP client implementation',
+        default: false,
+    },
 }
 
-export const featureFlagDefaults: FeatureFlags = {
-    newTooltips: true,
-}
-
+// TODO(chris) wrap this in Partial<>
 export interface StorageItems {
     sourcegraphURL: string
     gitHubEnterpriseURL: string
@@ -39,14 +60,13 @@ export interface StorageItems {
     sourcegraphAnonymousUid: string
     disableExtension: boolean
     /**
-     * Feature flag to use new LSP funcs (standardized with sourcegraph/sourcegraph). Soon this feature flag will
-     * enable more CXP features.
-     */
-    useCXP: boolean
-    /**
      * Storage for feature flags
      */
-    featureFlags: FeatureFlags
+    featureFlags: Partial<Record<Feature, boolean>>
+    /**
+     * Overrides settings from Sourcegraph.
+     */
+    clientSettings: string
 }
 
 export const defaultStorageItems: StorageItems = {
@@ -69,8 +89,8 @@ export const defaultStorageItems: StorageItems = {
     openFileOnSourcegraph: true,
     sourcegraphAnonymousUid: '',
     disableExtension: false,
-    useCXP: false,
-    featureFlags: featureFlagDefaults,
+    featureFlags: mapValues(featureFlags, v => v.default) as Record<Feature, boolean>,
+    clientSettings: '',
 }
 
 export type StorageChange = { [key in keyof StorageItems]: chrome.storage.StorageChange }

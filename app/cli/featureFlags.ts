@@ -1,50 +1,40 @@
 import * as OmniCLI from 'omnicli'
 
-import storage from '../../extension/storage'
-import { featureFlagDefaults, FeatureFlags } from '../../extension/types'
-import * as featureFlags from '../util/featureFlags'
+import { map, noop } from 'lodash'
+import { Feature, FeatureFlag, featureFlags } from '../../extension/types'
+import { set, toggle } from '../util/featureFlags'
 
-const keyIsFeatureFlag = (key: string): key is keyof FeatureFlags => featureFlagDefaults[key] !== undefined
+const keyIsFeatureFlag = (key: string): key is Feature => featureFlags[key] !== undefined
 
-function featureFlagAction([key, value]: string[]): void {
-    if (!keyIsFeatureFlag(key)) {
+function featureFlagAction([flagName, value]: string[]): void {
+    if (!keyIsFeatureFlag(flagName)) {
         return
     }
 
-    if (typeof featureFlagDefaults[key] === 'boolean') {
-        featureFlags
-            .set(key, JSON.parse(value))
-            .then(() => {
-                /*noop*/
-            })
-            .catch(err => console.log('unable to set feature flag'))
-        return
+    const flagValue = { true: true, false: false }[value]
+
+    if (flagValue === undefined) {
+        console.error('Unknown flag value ' + value + '. Must be true/false.')
     }
 
-    // TODO: Support other types when we add flags with other types
+    set(flagName, flagValue)
+        .then(noop)
+        .catch(err => console.log('unable to set feature flag ' + flagName + ':', err))
 }
 
-const getFeatureFlagSuggestsions = (flagType?: 'boolean') => ([cmd, ...args]: string[]): Promise<
-    OmniCLI.Suggestion[]
-> =>
-    new Promise(resolve => {
-        storage.getSync(({ featureFlags }) => {
-            const suggestions: OmniCLI.Suggestion[] = Object.keys(featureFlags)
-                .filter(flag => (flagType ? typeof featureFlagDefaults[flag] === flagType : true))
-                .map(flag => ({
-                    content: flag,
-                    description: `${flag} - ${typeof featureFlags[flag]}`,
-                }))
-
-            resolve(suggestions)
-        })
+const featureFlagSuggestsions: OmniCLI.Suggestion[] = map(
+    featureFlags,
+    (featureFlag: FeatureFlag, flagName: Feature) => ({
+        content: flagName,
+        description: `${flagName} - ${featureFlag.title} (defaults to ${featureFlag.default})`,
     })
+)
 
 export const featureFlagsCommand: OmniCLI.Command = {
     name: 'feature-flag',
     alias: ['flag', 'ff'],
     action: featureFlagAction,
-    getSuggestions: getFeatureFlagSuggestsions(),
+    getSuggestions: () => featureFlagSuggestsions,
     description: 'Set experimental feature flags',
 }
 
@@ -53,11 +43,8 @@ function toggleFeatureFlagAction([key, value]: string[]): void {
         return
     }
 
-    featureFlags
-        .toggle(key)
-        .then(() => {
-            /*noop*/
-        })
+    toggle(key)
+        .then(noop)
         .catch(err => console.log('unable to set feature flag'))
 }
 
@@ -65,6 +52,6 @@ export const toggleFeatureFlagsCommand: OmniCLI.Command = {
     name: 'toggle-feature-flag',
     alias: ['toggle-flag', 'tff'],
     action: toggleFeatureFlagAction,
-    getSuggestions: getFeatureFlagSuggestsions('boolean'),
+    getSuggestions: () => featureFlagSuggestsions,
     description: 'Toggle an experimental feature flag',
 }

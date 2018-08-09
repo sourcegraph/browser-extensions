@@ -1,3 +1,4 @@
+import { map, noop } from 'lodash'
 import * as querystring from 'query-string'
 import * as React from 'react'
 import { FormGroup, Input, Label } from 'reactstrap'
@@ -5,6 +6,7 @@ import * as browserAction from '../../../extension/browserAction'
 import { getURL } from '../../../extension/extension'
 import * as management from '../../../extension/management'
 import storage from '../../../extension/storage'
+import { defaultStorageItems, Feature, FeatureFlag, featureFlags } from '../../../extension/types'
 import { getExtensionVersion } from '../../util/context'
 import { ConfigWarning } from './ConfigWarning'
 import { PhabricatorSettings } from './PhabricatorSettings'
@@ -24,7 +26,8 @@ interface State {
     version: string
     extensionDisabled: boolean
     canShowDisableExtension: boolean
-    useCXP: boolean
+    featureFlags: Record<Feature, boolean> | 'LOADING'
+    clientSettings: string
 }
 
 // Make safari not be abnoxious <angry face>
@@ -54,7 +57,8 @@ export class OptionsPage extends React.Component<{}, State> {
             version: '',
             extensionDisabled: false,
             canShowDisableExtension: false,
-            useCXP: false,
+            featureFlags: 'LOADING',
+            clientSettings: '',
         }
     }
 
@@ -70,7 +74,11 @@ export class OptionsPage extends React.Component<{}, State> {
                     executeSearchEnabled: items.executeSearchEnabled === undefined || items.executeSearchEnabled,
                     extensionDisabled: items.disableExtension,
                     canShowDisableExtension: !!extensionInfo && !extensionInfo.mayDisable,
-                    useCXP: items.useCXP,
+                    featureFlags: { ...defaultStorageItems.featureFlags, ...items.featureFlags } as Record<
+                        Feature,
+                        boolean
+                    >,
+                    clientSettings: items.clientSettings,
                 })
             })
         })
@@ -113,10 +121,26 @@ export class OptionsPage extends React.Component<{}, State> {
         })
     }
 
-    private onUseCXPToggled = () => {
-        const useCXP = !this.state.useCXP
-        storage.setSync({ useCXP }, () => {
-            this.setState({ useCXP })
+    private setFeatureFlag = (flagName: Feature, enabled: boolean) => () => {
+        storage.getSync(items => {
+            storage.setSync(
+                {
+                    ...items,
+                    featureFlags: {
+                        ...items.featureFlags,
+                        [flagName]: enabled,
+                    },
+                },
+                () => {
+                    this.setState(() => ({
+                        featureFlags: {
+                            ...defaultStorageItems.featureFlags,
+                            ...items.featureFlags,
+                            [flagName]: enabled,
+                        } as Record<Feature, boolean>,
+                    }))
+                }
+            )
         })
     }
 
@@ -240,16 +264,27 @@ export class OptionsPage extends React.Component<{}, State> {
                                     diagrams on GitHub markdown files
                                 </div>
                             </Label>
-                            <Label className="options__input">
-                                <Input
-                                    onClick={this.onUseCXPToggled}
-                                    checked={Boolean(this.state.useCXP)}
-                                    className="options__input-checkbox"
-                                    type="checkbox"
-                                    {...safariInputAttributes as any}
-                                />{' '}
-                                <div className="options__input-label">Use new LSP client implementation</div>
-                            </Label>
+                            {map(featureFlags, (flag: FeatureFlag, flagName: Feature) => (
+                                <Label className="options__input" key={flagName}>
+                                    <Input
+                                        onChange={
+                                            this.state.featureFlags === 'LOADING'
+                                                ? noop
+                                                : this.setFeatureFlag(flagName, !this.state.featureFlags[flagName])
+                                        }
+                                        checked={
+                                            this.state.featureFlags === 'LOADING'
+                                                ? flag.default
+                                                : this.state.featureFlags[flagName]
+                                        }
+                                        disabled={this.state.featureFlags === 'LOADING'}
+                                        className="options__input-checkbox"
+                                        type="checkbox"
+                                        {...safariInputAttributes as any}
+                                    />
+                                    <div className="options__input-label">{flag.title}</div>
+                                </Label>
+                            ))}
                         </FormGroup>
                         <FormGroup check={true}>
                             <Label className="options__input">
