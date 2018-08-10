@@ -158,7 +158,6 @@ export function createExtensionsContextController(): ExtensionsContextController
             // TODO(chris) could lensify this
             // TODO(chris) could promisify/observify this
             storage.getSync(storageItems => {
-                console.log('getSync', storageItems)
                 const format = { tabSize: 2, insertSpaces: true, eol: '\n' }
                 if (edit) {
                     storageItems.clientSettings = applyEdits(
@@ -177,8 +176,6 @@ export function createExtensionsContextController(): ExtensionsContextController
                     )
                 }
                 storage.setSync(storageItems, () => {
-                    console.log('setSync', storageItems)
-
                     update.next(undefined)
                 })
             })
