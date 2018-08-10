@@ -10,10 +10,10 @@ import { MessageTransports } from 'cxp/module/jsonrpc2/connection'
 import { createWebSocketMessageTransports } from 'cxp/module/jsonrpc2/transports/browserWebSocket'
 import { TextDocumentDecoration } from 'cxp/module/protocol'
 import { combineLatest, from, ReplaySubject } from 'rxjs'
-import { take } from 'rxjs/operators'
+import { filter, map, take, withLatestFrom } from 'rxjs/operators'
 import uuid from 'uuid'
 import { Disposable } from 'vscode-languageserver'
-import { sourcegraphURLSubject } from '../util/context'
+import { sourcegraphURLSubject, useCXP } from '../util/context'
 import { isErrorLike } from './errors'
 import { createExtensionsContextController } from './extensions'
 import { createPortMessageTransports } from './PortMessageTransports'
@@ -32,17 +32,26 @@ export const configuredExtensionToCXPExtensionWithManifest = (x: ConfiguredExten
     manifest: x.manifest,
 })
 
-combineLatest(CXP_EXTENSIONS_CONTEXT_CONTROLLER.viewerConfiguredExtensions, rootAndComponent).subscribe(
-    ([configuredExtensions, rootAndComponent]) => {
-        CXP_CONTROLLER.setEnvironment({
-            ...rootAndComponent,
-            extensions: configuredExtensions.map(configuredExtensionToCXPExtensionWithManifest),
-        })
-    },
-    err => {
-        console.error('Error fetching viewer configured extensions via GraphQL: %O', err)
-    }
-)
+const when = f => observable =>
+    observable.pipe(
+        withLatestFrom(f),
+        filter(([_, v]) => v),
+        map(([x, _]) => x)
+    )
+
+combineLatest(CXP_EXTENSIONS_CONTEXT_CONTROLLER.viewerConfiguredExtensions, rootAndComponent)
+    .pipe(when(useCXP))
+    .subscribe(
+        ([configuredExtensions, rootAndComponent]) => {
+            CXP_CONTROLLER.setEnvironment({
+                ...rootAndComponent,
+                extensions: configuredExtensions.map(configuredExtensionToCXPExtensionWithManifest),
+            })
+        },
+        err => {
+            console.error('Error fetching viewer configured extensions via GraphQL: %O', err)
+        }
+    )
 
 const createPlatformMessageTransports = ({ platform }) =>
     new Promise<MessageTransports>((resolve, reject) => {

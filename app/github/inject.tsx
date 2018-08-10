@@ -17,7 +17,7 @@ import mermaid from 'mermaid'
 import * as React from 'react'
 import { render, unmountComponentAtNode } from 'react-dom'
 import { forkJoin, from, of, Subject } from 'rxjs'
-import { filter, map, withLatestFrom } from 'rxjs/operators'
+import { filter, map, take, withLatestFrom } from 'rxjs/operators'
 import { Disposable } from 'vscode-languageserver/lib/main'
 import { findElementWithOffset, getTargetLineAndOffset, GitHubBlobUrl } from '.'
 import storage from '../../extension/storage'
@@ -45,6 +45,7 @@ import {
     repositoryFileTreeEnabled,
     repoUrlCache,
     sourcegraphUrl,
+    useCXP,
 } from '../util/context'
 import * as featureFlags from '../util/featureFlags'
 import { blobDOMFunctions, diffDomFunctions, searchCodeSnippetDOMFunctions } from './dom_functions'
@@ -208,7 +209,11 @@ function inject(): void {
                 .then(sourcegraphURL => {
                     if (isEnabled) {
                         injectCodeIntelligence({ sourcegraphURL })
-                        injectCXPGlobalComponents({ sourcegraphURL })
+                        useCXP.pipe(take(1)).subscribe(cxpEnabled => {
+                            if (cxpEnabled) {
+                                injectCXPGlobalComponents({ sourcegraphURL })
+                            }
+                        })
                     } else {
                         injectBlobAnnotatorsOld()
                         injectCodeSnippetAnnotatorOld({
