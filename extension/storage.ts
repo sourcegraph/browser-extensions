@@ -1,3 +1,4 @@
+import { ReplaySubject } from 'rxjs'
 import SafariStorageArea, { SafariSettingsChangeMessage, stringifyStorageArea } from './safari/StorageArea'
 import { StorageChange, StorageItems } from './types'
 
@@ -15,9 +16,11 @@ export interface Storage {
     getSync: (callback: (items: StorageItems) => void) => void
     getSyncItem: (key: keyof StorageItems, callback: (items: StorageItems) => void) => void
     setSync: (items: Partial<StorageItems>, callback?: (() => void) | undefined) => void
+    observeSync: <T extends keyof StorageItems>(key: T) => ReplaySubject<StorageItems[T]>
     getLocal: (callback: (items: StorageItems) => void) => void
     getLocalItem: (key: keyof StorageItems, callback: (items: StorageItems) => void) => void
     setLocal: (items: Partial<StorageItems>, callback?: (() => void) | undefined) => void
+    observeLocal: <T extends keyof StorageItems>(key: T) => ReplaySubject<StorageItems[T]>
     addSyncMigration: (migrate: MigrateFunc) => void
     addLocalMigration: (migrate: MigrateFunc) => void
     onChanged: (listener: (changes: Partial<StorageChange>, areaName: string) => void) => void
@@ -30,6 +33,51 @@ const getItem = (area: chrome.storage.StorageArea) => (
     key: keyof StorageItems,
     callback: (items: StorageItems) => void
 ) => area.get(key, callback)
+
+const onChanged = (listener: (changes: Partial<StorageChange>, areaName: string) => void) => {
+    if (chrome && chrome.storage) {
+        chrome.storage.onChanged.addListener(listener)
+    } else if (safari && safari.application) {
+        const extension = safari.extension as SafariExtension
+
+        extension.settings.addEventListener(
+            'change',
+            ({ key, newValue, oldValue }: SafariExtensionSettingsChangeEvent) => {
+                const k = key as keyof StorageItems
+
+                listener({ [k]: { newValue, oldValue } }, 'sync')
+            }
+        )
+    } else if (safari && !safari.application) {
+        const page = safari.self as SafariContentWebPage
+
+        const handleChanges = (event: SafariExtensionMessageEvent) => {
+            if (event.name === 'settings-change') {
+                const { changes, areaName } = event.message as SafariSettingsChangeMessage
+                const c = changes as { [key in keyof StorageItems]: chrome.storage.StorageChange }
+
+                listener(c, areaName)
+            }
+        }
+
+        page.addEventListener('message', handleChanges, false)
+    }
+}
+
+const observe = (area: chrome.storage.StorageArea) => <T extends keyof StorageItems>(key: T) => {
+    const itemsSubject = new ReplaySubject<StorageItems[T]>(1)
+    get(area)(items => {
+        const item = items[key]
+        itemsSubject.next(item)
+    })
+    onChanged(changes => {
+        const change = changes[key]
+        if (change && change.newValue) {
+            itemsSubject.next(change.newValue)
+        }
+    })
+    return itemsSubject
+}
 
 const throwNoopErr = () => {
     throw new Error('do not call browser extension apis from an in page script')
@@ -68,43 +116,17 @@ export default ((): Storage => {
             getSync: get(syncStorageArea),
             getSyncItem: getItem(syncStorageArea),
             setSync: set(syncStorageArea),
+            observeSync: observe(syncStorageArea),
 
             getLocal: get(localStorageArea),
             getLocalItem: getItem(localStorageArea),
             setLocal: set(localStorageArea),
+            observeLocal: observe(localStorageArea),
 
             addSyncMigration: addMigration(syncStorageArea),
             addLocalMigration: addMigration(localStorageArea),
 
-            onChanged: (listener: (changes: Partial<StorageChange>, areaName: string) => void) => {
-                if (chrome && chrome.storage) {
-                    chrome.storage.onChanged.addListener(listener)
-                } else if (safari && safari.application) {
-                    const extension = safari.extension as SafariExtension
-
-                    extension.settings.addEventListener(
-                        'change',
-                        ({ key, newValue, oldValue }: SafariExtensionSettingsChangeEvent) => {
-                            const k = key as keyof StorageItems
-
-                            listener({ [k]: { newValue, oldValue } }, 'sync')
-                        }
-                    )
-                } else if (safari && !safari.application) {
-                    const page = safari.self as SafariContentWebPage
-
-                    const handleChanges = (event: SafariExtensionMessageEvent) => {
-                        if (event.name === 'settings-change') {
-                            const { changes, areaName } = event.message as SafariSettingsChangeMessage
-                            const c = changes as { [key in keyof StorageItems]: chrome.storage.StorageChange }
-
-                            listener(c, areaName)
-                        }
-                    }
-
-                    page.addEventListener('message', handleChanges, false)
-                }
-            },
+            onChanged,
         }
     }
 
@@ -115,10 +137,12 @@ export default ((): Storage => {
         getSync: throwNoopErr,
         getSyncItem: throwNoopErr,
         setSync: throwNoopErr,
+        observeSync: throwNoopErr,
         onChanged: throwNoopErr,
         getLocal: throwNoopErr,
         getLocalItem: throwNoopErr,
         setLocal: throwNoopErr,
+        observeLocal: throwNoopErr,
         addSyncMigration: throwNoopErr,
         addLocalMigration: throwNoopErr,
     }

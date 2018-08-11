@@ -18,7 +18,6 @@ import { flatten, isEqual } from 'lodash'
 import { combineLatest, Observable, ReplaySubject, Subject, throwError } from 'rxjs'
 import { distinctUntilChanged, map, mergeMap, switchMap, take } from 'rxjs/operators'
 import storage from '../../extension/storage'
-import { sourcegraphURLSubject } from '../util/context'
 import { getContext } from './context'
 import { createAggregateError, isErrorLike } from './errors'
 import { queryGraphQL } from './graphql'
@@ -113,7 +112,8 @@ const configurationCascadeFragment = gql`
  * individual configs from the various config subjects (orgs, user, etc.).
  */
 export const gqlConfigurationCascade = new ReplaySubject<GQL.IConfigurationCascade>(1)
-sourcegraphURLSubject
+storage
+    .observeSync('sourcegraphURL')
     .pipe(
         switchMap(url =>
             queryGraphQL(
@@ -183,7 +183,7 @@ export function createExtensionsContextController(): ExtensionsContextController
         },
 
         queryGraphQL: (request, variables) =>
-            sourcegraphURLSubject.pipe(
+            storage.observeSync('sourcegraphURL').pipe(
                 take(1),
                 mergeMap(url =>
                     queryGraphQL(getContext({ repoKey: '', isRepoSpecific: false }), request, variables, [url])

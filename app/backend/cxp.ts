@@ -13,7 +13,8 @@ import { combineLatest, from, ReplaySubject } from 'rxjs'
 import { filter, map, take, withLatestFrom } from 'rxjs/operators'
 import uuid from 'uuid'
 import { Disposable } from 'vscode-languageserver'
-import { sourcegraphURLSubject, useCXP } from '../util/context'
+import storage from '../../extension/storage'
+import { useCXP } from '../util/context'
 import { isErrorLike } from './errors'
 import { createExtensionsContextController } from './extensions'
 import { createPortMessageTransports } from './PortMessageTransports'
@@ -93,7 +94,7 @@ export function createMessageTransports(
         //
         // TODO(chris): Remove this logic if/when platform-rewriting lands
         // https://github.com/sourcegraph/sourcegraph/issues/12598
-        return from(sourcegraphURLSubject)
+        return from(storage.observeSync('sourcegraphURL'))
             .pipe(take(1))
             .toPromise()
             .then(urlString => {

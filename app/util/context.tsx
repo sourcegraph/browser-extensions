@@ -20,22 +20,11 @@ export let repositoryFileTreeEnabled = false
 
 export let inlineSymbolSearchEnabled = false
 
-// TODO(chris) consider converting the others to observables too
 export const useCXP = new ReplaySubject<boolean>(1)
 storage.getSync(items => useCXP.next(items.useCXP))
 storage.onChanged(changes => {
     if (changes.useCXP) {
         useCXP.next(changes.useCXP.newValue)
-    }
-})
-
-// TODO(chris) consider factoring out this pattern of
-// ReplaySubject+getSync+onChanged
-export const sourcegraphURLSubject = new ReplaySubject<string>(1)
-storage.getSync(items => sourcegraphURLSubject.next(items.sourcegraphURL))
-storage.onChanged(changes => {
-    if (changes.sourcegraphURL) {
-        sourcegraphURLSubject.next(changes.sourcegraphURL.newValue)
     }
 })
 
