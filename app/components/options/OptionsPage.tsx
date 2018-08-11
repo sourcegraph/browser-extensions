@@ -1,8 +1,6 @@
-import { LoadingSpinner } from '@sourcegraph/react-loading-spinner'
 import * as querystring from 'query-string'
 import * as React from 'react'
-import { Button, FormGroup, Input, Label } from 'reactstrap'
-import { Subscription } from 'rxjs'
+import { FormGroup, Input, Label } from 'reactstrap'
 import * as browserAction from '../../../extension/browserAction'
 import { getURL } from '../../../extension/extension'
 import * as management from '../../../extension/management'
@@ -28,7 +26,6 @@ interface State {
     canShowDisableExtension: boolean
     useCXP: boolean
     clientSettings: string
-    gitHubToken: { state: 'LOADING' | 'EDITING' | 'CONCEALED'; value: string }
 }
 
 // Make safari not be abnoxious <angry face>
@@ -41,7 +38,6 @@ const safariInputAttributes = {
 
 export class OptionsPage extends React.Component<{}, State> {
     public state: State
-    private subscriptions = new Subscription()
 
     constructor(props: any) {
         super(props)
@@ -61,7 +57,6 @@ export class OptionsPage extends React.Component<{}, State> {
             canShowDisableExtension: false,
             useCXP: false,
             clientSettings: '',
-            gitHubToken: { state: 'LOADING', value: '' },
         }
     }
 
@@ -79,10 +74,6 @@ export class OptionsPage extends React.Component<{}, State> {
                     canShowDisableExtension: !!extensionInfo && !extensionInfo.mayDisable,
                     useCXP: items.useCXP,
                     clientSettings: items.clientSettings,
-                    gitHubToken:
-                        items.gitHubToken && items.gitHubToken !== ''
-                            ? { state: 'CONCEALED', value: items.gitHubToken }
-                            : { state: 'EDITING', value: '' },
                 })
             })
         })
@@ -90,18 +81,6 @@ export class OptionsPage extends React.Component<{}, State> {
         getExtensionVersion()
             .then(version => this.setState({ version }))
             .catch(() => this.setState({ version: '' }))
-
-        this.subscriptions.add(
-            storage
-                .observeSync('gitHubToken')
-                .subscribe(gitHubToken =>
-                    this.setState(() => ({ gitHubToken: { state: 'CONCEALED', value: gitHubToken } }))
-                )
-        )
-    }
-
-    public componentWillUnmount(): void {
-        this.subscriptions.unsubscribe()
     }
 
     private onExtensionDisabledToggled = () => {
@@ -142,30 +121,6 @@ export class OptionsPage extends React.Component<{}, State> {
         storage.setSync({ useCXP }, () => {
             this.setState({ useCXP })
         })
-    }
-
-    private gitHubTokenOnKeyPress = (e: React.KeyboardEvent<HTMLElement>): void => {
-        if (this.state.gitHubToken.state === 'EDITING') {
-            if (e.charCode === 13) {
-                storage.setSync(
-                    {
-                        gitHubToken: this.state.gitHubToken.value,
-                    },
-                    () => this.setState(() => ({ gitHubToken: { ...this.state.gitHubToken, state: 'CONCEALED' } }))
-                )
-            }
-        }
-    }
-
-    private gitHubTokenInputChanged = (e: React.ChangeEvent<HTMLInputElement>) => {
-        e.persist()
-        if (this.state.gitHubToken.state === 'EDITING') {
-            this.setState(() => ({ gitHubToken: { ...this.state.gitHubToken, value: e.target.value } }))
-        }
-    }
-
-    private editGitHubToken = () => {
-        this.setState(() => ({ gitHubToken: { ...this.state.gitHubToken, state: 'EDITING' } }))
     }
 
     public render(): JSX.Element | null {
@@ -257,25 +212,6 @@ export class OptionsPage extends React.Component<{}, State> {
                 <div className="options__divider" />
                 <div className="options__section">
                     <div className="options__section-header">Phabricator Settings</div>
-                    <PhabricatorSettings />
-                </div>
-                <div className="options__section">
-                    <div className="options__section-header">GitHub token</div>
-                    {this.state.gitHubToken.state === 'LOADING' ? (
-                        <LoadingSpinner />
-                    ) : this.state.gitHubToken.state === 'EDITING' ? (
-                        <Input
-                            value={this.state.gitHubToken.value}
-                            onKeyPress={this.gitHubTokenOnKeyPress}
-                            onChange={this.gitHubTokenInputChanged}
-                            className="options__input-field"
-                            type="text"
-                        />
-                    ) : (
-                        <Button className="options__button-icon-add" onClick={this.editGitHubToken} size="sm">
-                            Set GitHub token
-                        </Button>
-                    )}
                     <PhabricatorSettings />
                 </div>
                 <ServerInstallation />

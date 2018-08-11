@@ -16,9 +16,8 @@ import { identity } from 'lodash'
 import mermaid from 'mermaid'
 import * as React from 'react'
 import { render, unmountComponentAtNode } from 'react-dom'
-import { combineLatest, forkJoin, of, Subject } from 'rxjs'
-import { ajax } from 'rxjs/ajax'
-import { catchError, filter, map, mergeMap, take, withLatestFrom } from 'rxjs/operators'
+import { forkJoin, of, Subject } from 'rxjs'
+import { filter, map, take, withLatestFrom } from 'rxjs/operators'
 import { Disposable } from 'vscode-languageserver/lib/main'
 import { findElementWithOffset, getTargetLineAndOffset, GitHubBlobUrl } from '.'
 import storage from '../../extension/storage'
@@ -42,7 +41,6 @@ import {
     eventLogger,
     getModeFromPath,
     inlineSymbolSearchEnabled,
-    isPrivateRepository,
     renderMermaidGraphsEnabled,
     repositoryFileTreeEnabled,
     repoUrlCache,
@@ -789,85 +787,58 @@ function injectBlobAnnotators({
         // TODO(chris) consolidate resolveRev calls (maybe just memoize it for
         // now)
 
-        const gitHubState = getGitHubState(window.location.href) as GitHubBlobUrl
-
         // TODO(chris) implement xfiles/xcontent for all code hosts in a
         // standard way
 
-        const gitHubFileContent = ({ gitHubState: { owner, repoName, filePath }, gitHubToken }) =>
-            ajax({
-                url: `https://api.github.com/repos/${owner}/${repoName}/contents/${filePath}`,
-                headers: gitHubToken
-                    ? {
-                          Authorization: 'token ' + gitHubToken,
-                      }
-                    : {},
-                crossDomain: true,
-                responseType: 'json',
-            }).pipe(
-                map(response => window.atob(response.response.content)),
-                catchError(() => {
-                    if (isPrivateRepository()) {
-                        console.error(
-                            [
-                                'Could not fetch the file content from GitHub.',
-                                'Make sure you entered a valid GitHub token in the Sourcegraph options popup.',
-                            ].join(' ')
-                        )
-                    }
-                    return of('could not fetch file content from GitHub')
-                })
-            )
+        const fileElement = document.querySelector('tbody')
+        const gitHubCurrentFileContent = fileElement ? fileElement.innerText : ''
 
         let oldDecorations: Disposable[] = []
 
-        combineLatest(
-            resolveRev({ repoPath, rev }).pipe(retryWhenCloneInProgressError()),
-            storage
-                .observeSync('gitHubToken')
-                .pipe(mergeMap(gitHubToken => gitHubFileContent({ gitHubState, gitHubToken })))
-        ).subscribe(([commitID, fileContent]) => {
-            rootAndComponent.next({
-                root: mkUri({ repoPath, commitID }),
-                component: {
-                    document: {
-                        uri: mkUriPath({ repoPath, commitID, filePath }),
-                        languageId: getModeFromPath(filePath) || 'could not determine mode',
-                        version: 0,
-                        text: fileContent,
+        resolveRev({ repoPath, rev })
+            .pipe(retryWhenCloneInProgressError())
+            .subscribe(commitID => {
+                rootAndComponent.next({
+                    root: mkUri({ repoPath, commitID }),
+                    component: {
+                        document: {
+                            uri: mkUriPath({ repoPath, commitID, filePath }),
+                            languageId: getModeFromPath(filePath) || 'could not determine mode',
+                            version: 0,
+                            text: gitHubCurrentFileContent,
+                        },
+                        selections: [],
+                        visibleRanges: [],
                     },
-                    selections: [],
-                    visibleRanges: [],
-                },
-            })
+                })
 
-            CXP_CONTROLLER.registries.textDocumentDecoration
-                .getDecorations({
-                    textDocument: toTextDocumentIdentifier({
-                        commitID,
-                        filePath,
-                        repoPath,
-                    }),
-                })
-                .subscribe(decorations => {
-                    for (const old of oldDecorations) {
-                        old.dispose()
-                    }
-                    oldDecorations = []
-                    for (const decoration of decorations || []) {
-                        try {
-                            oldDecorations.push(
-                                applyDecoration({
-                                    fileElement: files[0],
-                                    decoration,
-                                })
-                            )
-                        } catch (e) {
-                            console.warn(e)
+                CXP_CONTROLLER.registries.textDocumentDecoration
+                    .getDecorations({
+                        textDocument: toTextDocumentIdentifier({
+                            commitID,
+                            filePath,
+                            repoPath,
+                        }),
+                    })
+                    .subscribe(decorations => {
+                        for (const old of oldDecorations) {
+                            old.dispose()
                         }
-                    }
-                })
-        })
+                        oldDecorations = []
+                        for (const decoration of decorations || []) {
+                            try {
+                                oldDecorations.push(
+                                    applyDecoration({
+                                        fileElement: files[0],
+                                        decoration,
+                                    })
+                                )
+                            } catch (e) {
+                                console.warn(e)
+                            }
+                        }
+                    })
+            })
     }
 
     const mutationObserver = new MutationObserver(mutations => {
