@@ -51,6 +51,10 @@ export interface StorageItems {
      * Overrides settings from Sourcegraph.
      */
     clientSettings: string
+    /**
+     * GitHub access token.
+     */
+    gitHubToken: string
 }
 
 export const defaultStorageItems: StorageItems = {
@@ -76,6 +80,7 @@ export const defaultStorageItems: StorageItems = {
     useCXP: false,
     featureFlags: featureFlagDefaults,
     clientSettings: '',
+    gitHubToken: '',
 }
 
 export type StorageChange = { [key in keyof StorageItems]: chrome.storage.StorageChange }

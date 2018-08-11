@@ -16,8 +16,9 @@ import { identity } from 'lodash'
 import mermaid from 'mermaid'
 import * as React from 'react'
 import { render, unmountComponentAtNode } from 'react-dom'
-import { forkJoin, from, of, Subject } from 'rxjs'
-import { filter, map, take, withLatestFrom } from 'rxjs/operators'
+import { combineLatest, forkJoin, of, Subject } from 'rxjs'
+import { ajax } from 'rxjs/ajax'
+import { catchError, filter, map, mergeMap, take, withLatestFrom } from 'rxjs/operators'
 import { Disposable } from 'vscode-languageserver/lib/main'
 import { findElementWithOffset, getTargetLineAndOffset, GitHubBlobUrl } from '.'
 import storage from '../../extension/storage'
@@ -41,6 +42,7 @@ import {
     eventLogger,
     getModeFromPath,
     inlineSymbolSearchEnabled,
+    isPrivateRepository,
     renderMermaidGraphsEnabled,
     repositoryFileTreeEnabled,
     repoUrlCache,
@@ -789,26 +791,47 @@ function injectBlobAnnotators({
 
         const gitHubState = getGitHubState(window.location.href) as GitHubBlobUrl
 
-        // TODO(chris) handle errors
-        const gitHubFileContent = ({ owner, repoName, filePath }) =>
-            from(
-                fetch(`https://api.github.com/repos/${owner}/${repoName}/contents/${filePath}`)
-                    .then(response => response.json())
-                    .then(response => window.atob(response.content))
+        // TODO(chris) implement xfiles/xcontent for all code hosts in a
+        // standard way
+
+        const gitHubFileContent = ({ gitHubState: { owner, repoName, filePath }, gitHubToken }) =>
+            ajax({
+                url: `https://api.github.com/repos/${owner}/${repoName}/contents/${filePath}`,
+                headers: gitHubToken
+                    ? {
+                          Authorization: 'token ' + gitHubToken,
+                      }
+                    : {},
+                crossDomain: true,
+                responseType: 'json',
+            }).pipe(
+                map(response => window.atob(response.response.content)),
+                catchError(() => {
+                    if (isPrivateRepository()) {
+                        console.error(
+                            [
+                                'Could not fetch the file content from GitHub.',
+                                'Make sure you entered a valid GitHub token in the Sourcegraph options popup.',
+                            ].join(' ')
+                        )
+                    }
+                    return of('could not fetch file content from GitHub')
+                })
             )
 
         let oldDecorations: Disposable[] = []
 
-        forkJoin(
+        combineLatest(
             resolveRev({ repoPath, rev }).pipe(retryWhenCloneInProgressError()),
-            gitHubFileContent(gitHubState)
+            storage
+                .observeSync('gitHubToken')
+                .pipe(mergeMap(gitHubToken => gitHubFileContent({ gitHubState, gitHubToken })))
         ).subscribe(([commitID, fileContent]) => {
             rootAndComponent.next({
                 root: mkUri({ repoPath, commitID }),
                 component: {
                     document: {
                         uri: mkUriPath({ repoPath, commitID, filePath }),
-                        // TODO(chris) handle unknown modes
                         languageId: getModeFromPath(filePath) || 'could not determine mode',
                         version: 0,
                         text: fileContent,
