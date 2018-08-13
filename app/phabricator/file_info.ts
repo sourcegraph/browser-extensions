@@ -29,7 +29,10 @@ export const createDifferentialContextResolver = (codeView: HTMLElement): Observ
                 filePath: info.baseFilePath || info.filePath,
                 isBase: true,
             }).pipe(
-                map(({ commitID }) => ({ baseCommitID: commitID })),
+                map(({ commitID, stagingRepoPath }) => ({
+                    baseCommitID: commitID,
+                    baseRepoPath: stagingRepoPath || info.baseRepoPath,
+                })),
                 catchError(err => {
                     throw err
                 })
@@ -45,17 +48,23 @@ export const createDifferentialContextResolver = (codeView: HTMLElement): Observ
                 filePath: info.filePath,
                 isBase: false,
             }).pipe(
-                map(({ commitID }) => ({ headCommitID: commitID })),
+                map(({ commitID, stagingRepoPath }) => ({
+                    headCommitID: commitID,
+                    headRepoPath: stagingRepoPath || info.headRepoPath,
+                })),
                 catchError(err => {
                     throw err
                 })
             )
 
             return zip(resolveBaseCommitID, resolveHeadCommitID).pipe(
-                map(([{ baseCommitID }, { headCommitID }]) => {
-                    console.log({ baseCommitID, headCommitID, ...info })
-                    return { baseCommitID, headCommitID, ...info }
-                })
+                map(([{ baseCommitID, baseRepoPath }, { headCommitID, headRepoPath }]) => ({
+                    baseCommitID,
+                    headCommitID,
+                    ...info,
+                    baseRepoPath,
+                    headRepoPath,
+                }))
             )
         }),
         map(info => (token: HoveredToken): HoveredTokenContext => ({

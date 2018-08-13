@@ -27,7 +27,7 @@ function injectModules(): void {
         .isEnabled('newTooltips')
         .then(enabled => {
             if (enabled) {
-                injectCodeIntelligence(phabCodeViews)
+                injectCodeIntelligence({ codeViews: phabCodeViews })
                 return
             }
 

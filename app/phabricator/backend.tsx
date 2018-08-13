@@ -1,6 +1,7 @@
 import { from, Observable } from 'rxjs'
-import { map } from 'rxjs/operators'
+import { map, switchMap } from 'rxjs/operators'
 import storage from '../../extension/storage'
+import { ajax } from '../../node_modules/rxjs/ajax'
 import { getContext } from '../backend/context'
 import { mutateGraphQL } from '../backend/graphql'
 import { isExtension } from '../context'
@@ -323,6 +324,43 @@ export function getRepoDetailsFromCallsign(callsign: string): Promise<Phabricato
     })
 }
 
+export function getRepoDetailsFromCallsignObservable(callsign: string): Observable<PhabricatorRepoDetails> {
+    const form = createConduitRequestForm()
+    form.set('params[constraints]', JSON.stringify({ callsigns: [callsign] }))
+    form.set('params[attachments]', '{ "uris": true }')
+
+    return ajax({
+        url: window.location.origin + '/api/diffusion.repository.search',
+        withCredentials: true,
+        headers: new Headers({ Accept: 'application/json' }),
+        body: form,
+    }).pipe(
+        map(({ response }) => response as ConduitReposResponse),
+        map(res => {
+            if (res.error_code) {
+                throw new Error(`error ${res.error_code}: ${res.error_info}`)
+            }
+
+            return res.result.data[0]
+        }),
+        switchMap(repo => convertConduitRepoToRepoDetailsObservable(repo)),
+        map(details => {
+            if (!details) {
+                throw new Error('could not parse repo details')
+            }
+
+            return details
+        }),
+        switchMap(details =>
+            createPhabricatorRepo({
+                callsign,
+                repoPath: details.repoPath,
+                phabricatorURL: window.location.origin,
+            }).pipe(map(() => details))
+        )
+    )
+}
+
 /**
  *  getSourcegraphURLFromConduit returns the current Sourcegraph URL on the window object or will query the
  *  sourcegraph.configuration conduit API endpoint. The Phabricator extension updates the window object automatically, but in the case it fails
@@ -440,6 +478,45 @@ function convertConduitRepoToRepoDetails(repo: ConduitRepo): Promise<Phabricator
                 }
             }
             return resolve(details)
+        }
+    })
+}
+
+function convertConduitRepoToRepoDetailsObservable(repo: ConduitRepo): Observable<PhabricatorRepoDetails | null> {
+    return new Observable(observer => {
+        if (isExtension) {
+            return storage.getSync(items => {
+                if (items.phabricatorMappings) {
+                    for (const mapping of items.phabricatorMappings) {
+                        if (mapping.callsign === repo.fields.callsign) {
+                            return observer.next({
+                                callsign: repo.fields.callsign,
+                                repoPath: mapping.path,
+                            })
+                        }
+                    }
+                }
+                return observer.next(convertToDetails(repo))
+            })
+        } else {
+            // The path to a phabricator repository on a Sourcegraph instance may differ than it's URI / name from the
+            // phabricator conduit API. Since we do not currently send the PHID with the Phabricator repository this a
+            // backwards work around configuration setting to ensure mappings are correct. This logic currently exists
+            // in the browser extension options menu.
+            const callsignMappings =
+                window.localStorage.PHABRICATOR_CALLSIGN_MAPPINGS || window.PHABRICATOR_CALLSIGN_MAPPINGS
+            const details = convertToDetails(repo)
+            if (callsignMappings) {
+                for (const mapping of JSON.parse(callsignMappings)) {
+                    if (mapping.callsign === repo.fields.callsign) {
+                        return observer.next({
+                            callsign: repo.fields.callsign,
+                            repoPath: mapping.path,
+                        })
+                    }
+                }
+            }
+            return observer.next(details)
         }
     })
 }

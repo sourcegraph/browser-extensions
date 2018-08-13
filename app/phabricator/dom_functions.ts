@@ -8,19 +8,24 @@ export const diffDomFunctions: DOMFunctions = {
         if (target.tagName === 'TH' || target.classList.contains('copy')) {
             return null
         }
-        console.log(target, target.closest('td'))
-        return target.closest('td')
+
+        const td = target.closest('td')
+        if (td && (td.classList.contains('show-more') || td.classList.contains('show-context'))) {
+            return null
+        }
+
+        return td
     },
     getCodeElementFromLineNumber: (codeView, line, part) => {
         const lineNumberCells = codeView.querySelectorAll(`th:nth-of-type(${part === 'base' ? 1 : 2})`)
         for (const lineNumberCell of lineNumberCells) {
             if (lineNumberCell.textContent && parseInt(lineNumberCell.textContent, 10) === line) {
-                let codeElement = lineNumberCell.nextElementSibling
+                let codeElement = lineNumberCell as HTMLElement | null
                 while (codeElement && (codeElement.tagName !== 'TD' || codeElement.classList.contains('copy'))) {
-                    codeElement = lineNumberCell.nextElementSibling
+                    codeElement = codeElement.nextElementSibling as HTMLElement | null
                 }
 
-                return codeElement as HTMLElement | null
+                return codeElement
             }
         }
 
@@ -29,7 +34,11 @@ export const diffDomFunctions: DOMFunctions = {
     getLineNumberFromCodeElement: codeElement => {
         let elem: HTMLElement | null = codeElement
         while (elem && elem.tagName !== 'TH') {
-            elem = elem.previousElementSibling as HTMLElement
+            elem = elem.previousElementSibling as HTMLElement | null
+        }
+
+        if (elem === null) {
+            throw new Error('could not find line number element from code element')
         }
 
         return parseInt(elem.textContent!, 10)
@@ -63,4 +72,5 @@ export const diffDomFunctions: DOMFunctions = {
 
         return elem.previousElementSibling ? 'head' : 'base'
     },
+    isFirstCharacterDiffIndicator: () => false,
 }

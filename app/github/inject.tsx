@@ -580,12 +580,10 @@ function injectBlobAnnotators(hoverifier: Hoverifier): void {
             resolveRev({ repoPath, rev: headCommitID }).pipe(retryWhenCloneInProgressError())
         )
             .pipe(
-                map(
-                    ([baseCommitID, headCommitID]): DiffResolvedRevSpec => ({
-                        baseCommitID,
-                        headCommitID,
-                    })
-                )
+                map(([baseCommitID, headCommitID]): DiffResolvedRevSpec => ({
+                    baseCommitID,
+                    headCommitID,
+                }))
             )
             .subscribe(resolvedRevSpec => {
                 const mount = createBlobAnnotatorMount(file, true)

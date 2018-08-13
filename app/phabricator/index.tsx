@@ -57,7 +57,7 @@ export interface ChangeState {
     commitID: string
 }
 
-function convertSpacesToTabs(realLineContent: string, domContent: string): boolean {
+export function convertSpacesToTabs(realLineContent: string, domContent: string): boolean {
     return !!realLineContent && !!domContent && realLineContent.startsWith('\t') && !domContent.startsWith('\t')
 }
 
@@ -174,7 +174,7 @@ export function getTargetLineAndOffset(
     }
 }
 
-function spacesToTabsAdjustment(text: string): number {
+export function spacesToTabsAdjustment(text: string): number {
     let suffix = text
     let adjustment = 0
     while (suffix.length >= 2 && suffix.startsWith('  ')) {
