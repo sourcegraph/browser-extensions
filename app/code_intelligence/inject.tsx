@@ -134,43 +134,6 @@ export function injectCodeIntelligence(codeHostInfo: CodeHostInfo): Subscription
 
     return findCodeViews(codeHostInfo.codeViews).subscribe(({ codeView, dom, createContextResolver, adjustPosition }) =>
         createContextResolver(codeView).subscribe(resolveContext => {
-            // const positionEvents = of(codeView).pipe(
-            //     findPositionsFromEvents(dom),
-            //     switchMap(({ position, ...rest }) => {
-            //         // If there was no adjustPosition option provided or no position found, pass through
-            //         if (!adjustPosition || !position) {
-            //             return of({ position, ...rest })
-            //         }
-
-            //         // If there was no code element found, pass through
-            //         const codeElement = dom.getCodeElementFromLineNumber(codeView, position.line, position.part)
-            //         if (!codeElement) {
-            //             return of({ position, ...rest })
-            //         }
-
-            //         const context = resolveContext(position)
-
-            //         return fetchBlobContentLines(context).pipe(
-            //             map(lines =>
-            //                 adjustPosition({
-            //                     documentLineContent: codeElement.textContent || '',
-            //                     actualLineContent: lines[position.line - 1],
-            //                     position,
-            //                     direction: AdjustmentDirection.DocumentToActual,
-            //                 })
-            //             ),
-            //             map(({ line, character }) => ({
-            //                 position: {
-            //                     ...position,
-            //                     line,
-            //                     character,
-            //                 },
-            //                 ...rest,
-            //             }))
-            //         )
-            //     })
-            // )
-
             hoverifier.hoverify({
                 dom,
                 positionEvents: of(codeView).pipe(findPositionsFromEvents(dom)),
