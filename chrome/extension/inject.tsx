@@ -5,6 +5,7 @@ import '../../app/util/polyfill'
 import { injectBitbucketServer } from '../../app/bitbucket/inject'
 import { injectGitHubApplication } from '../../app/github/inject'
 import { injectPhabricatorApplication } from '../../app/phabricator/app'
+import { injectRXJSDocs } from '../../app/rxjs-dev/inject'
 import { injectSourcegraphApp } from '../../app/sourcegraph/inject'
 import {
     isOnlySourcegraphDotCom,
@@ -62,6 +63,7 @@ function injectApplication(): void {
         const isBitbucket =
             document.querySelector('.bitbucket-header-logo') ||
             document.querySelector('.aui-header-logo.aui-header-logo-bitbucket')
+        const isRXJS = true
 
         if (isOnlySourcegraphDotCom(items.serverUrls) && !items.hasSeenServerModal) {
             runtime.sendMessage({ type: 'setBadgeText', payload: '1' })
@@ -73,7 +75,7 @@ function injectApplication(): void {
                     type: 'insertCSS',
                     payload: { file: 'css/style.bundle.css', origin: window.location.origin },
                 })
-            } else if (isPhabricator || isGitHub || isGitHubEnterprise || isBitbucket) {
+            } else if (isPhabricator || isGitHub || isGitHubEnterprise || isBitbucket || isRXJS) {
                 const styleSheet = document.createElement('link') as HTMLLinkElement
                 styleSheet.id = 'ext-style-sheet'
                 styleSheet.rel = 'stylesheet'
@@ -82,6 +84,8 @@ function injectApplication(): void {
                 document.head.appendChild(styleSheet)
             }
         }
+
+        injectRXJSDocs()
 
         if (isGitHub || isGitHubEnterprise) {
             setSourcegraphUrl(sourcegraphServerUrl)

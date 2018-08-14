@@ -29,7 +29,7 @@ export interface CodeHostInfo {
 export interface CodeViewInfo {
     selector: string
     dom: DOMFunctions
-    getToolbarMount: (codeView: HTMLElement, part?: DiffPart) => HTMLElement
+    getToolbarMount: (codeView: HTMLElement, part?: DiffPart) => HTMLElement | null
     createContextResolver(codeView: HTMLElement): Observable<ContextResolver>
     adjustPosition?: PositionAdjuster
 }

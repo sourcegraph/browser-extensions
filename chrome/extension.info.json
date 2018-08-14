@@ -43,7 +43,8 @@
           "https://github.com/*",
           "https://sourcegraph.com/*",
           "https://localhost:3443/*",
-          "http://localhost:32773/*"
+          "http://localhost:32773/*",
+          "https://rxjs-dev.firebaseapp.com/*"
         ],
         "run_at": "document_end",
         "js": ["/js/inject.bundle.js"]
