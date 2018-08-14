@@ -67,7 +67,7 @@ export default {
                     {
                         loader: 'sass-loader',
                         options: {
-                            includePaths: [__dirname + '/node_modules'],
+                            includePaths: [path.dirname(__dirname)],
                             importer: sassImportOnce,
                             importOnce: {
                                 css: true,

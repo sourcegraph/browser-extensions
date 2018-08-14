@@ -1,7 +1,4 @@
-import {
-    createController as createCXPController,
-    CXPExtensionWithManifest,
-} from '@sourcegraph/extensions-client-common/lib/cxp/controller'
+import { createController as createCXPController } from '@sourcegraph/extensions-client-common/lib/cxp/controller'
 import { ConfiguredExtension } from '@sourcegraph/extensions-client-common/lib/extensions/extension'
 import { ClientOptions } from 'cxp/module/client/client'
 import { Environment } from 'cxp/module/environment/environment'
@@ -26,13 +23,6 @@ export const CXP_CONTROLLER = createCXPController(CXP_EXTENSIONS_CONTEXT_CONTROL
 
 export const rootAndComponent = new ReplaySubject<Pick<Environment<Extension>, 'root' | 'component'>>(1)
 
-export const configuredExtensionToCXPExtensionWithManifest = (x: ConfiguredExtension) => ({
-    id: x.extensionID,
-    settings: { merged: x.settings },
-    isEnabled: x.isEnabled,
-    manifest: x.manifest,
-})
-
 const when = f => observable =>
     observable.pipe(
         withLatestFrom(f),
@@ -40,13 +30,18 @@ const when = f => observable =>
         map(([x, _]) => x)
     )
 
-combineLatest(CXP_EXTENSIONS_CONTEXT_CONTROLLER.viewerConfiguredExtensions, rootAndComponent)
+combineLatest(
+    CXP_EXTENSIONS_CONTEXT_CONTROLLER.viewerConfiguredExtensions,
+    CXP_EXTENSIONS_CONTEXT_CONTROLLER.context.configurationCascade,
+    rootAndComponent
+)
     .pipe(when(useCXP))
     .subscribe(
-        ([configuredExtensions, rootAndComponent]) => {
+        ([configuredExtensions, configurationCascade, rootAndComponent]) => {
             CXP_CONTROLLER.setEnvironment({
                 ...rootAndComponent,
-                extensions: configuredExtensions.map(configuredExtensionToCXPExtensionWithManifest),
+                extensions: configuredExtensions,
+                configuration: configurationCascade,
             })
         },
         err => {
@@ -71,7 +66,7 @@ const createPlatformMessageTransports = ({ platform }) =>
     })
 
 export function createMessageTransports(
-    extension: CXPExtensionWithManifest,
+    extension: Pick<ConfiguredExtension, 'id' | 'manifest'>,
     options: ClientOptions
 ): Promise<MessageTransports> {
     if (!extension.manifest) {

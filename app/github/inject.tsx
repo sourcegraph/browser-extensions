@@ -9,8 +9,8 @@ import {
 } from '@sourcegraph/codeintellify'
 import { propertyIsDefined } from '@sourcegraph/codeintellify/lib/helpers'
 import { HoverMerged } from '@sourcegraph/codeintellify/lib/types'
-import { CXPCommandListPopoverButton } from '@sourcegraph/extensions-client-common/lib/cxp/CXPCommandList'
-import { CXPStatusPopover } from '@sourcegraph/extensions-client-common/lib/cxp/CXPStatus'
+import { CommandListPopoverButton } from '@sourcegraph/extensions-client-common/lib/app/CommandList'
+import { ExtensionStatusPopover } from '@sourcegraph/extensions-client-common/lib/app/ExtensionStatus'
 import { ContributableMenu } from 'cxp/module/protocol'
 import { identity } from 'lodash'
 import mermaid from 'mermaid'
@@ -125,7 +125,7 @@ function injectCXPGlobalComponents({ sourcegraphURL }: { sourcegraphURL: string 
         statusElem.style.right = '0'
         document.body.appendChild(statusElem)
         render(
-            <CXPStatusPopover
+            <ExtensionStatusPopover
                 cxpController={CXP_CONTROLLER}
                 caretIcon={CXP_EXTENSIONS_CONTEXT_CONTROLLER.context.icons.CaretDown}
                 loaderIcon={CXP_EXTENSIONS_CONTEXT_CONTROLLER.context.icons.Loader}
@@ -141,7 +141,7 @@ function injectCXPGlobalComponents({ sourcegraphURL }: { sourcegraphURL: string 
         commandListElem.id = 'cxp-command-list'
         headerElem.insertBefore(commandListElem, headerElem.firstChild)
         render(
-            <CXPCommandListPopoverButton
+            <CommandListPopoverButton
                 cxpController={CXP_CONTROLLER}
                 menu={ContributableMenu.CommandPalette}
                 extensions={CXP_EXTENSIONS_CONTEXT_CONTROLLER}
@@ -813,13 +813,13 @@ function injectBlobAnnotators({
                 })
 
                 CXP_CONTROLLER.registries.textDocumentDecoration
-                    .getDecorations({
-                        textDocument: toTextDocumentIdentifier({
+                    .getDecorations(
+                        toTextDocumentIdentifier({
                             commitID,
                             filePath,
                             repoPath,
-                        }),
-                    })
+                        })
+                    )
                     .subscribe(decorations => {
                         for (const old of oldDecorations) {
                             old.dispose()

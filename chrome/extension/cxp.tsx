@@ -3,10 +3,15 @@
 import '../../app/util/polyfill'
 
 import { ExtensionsList } from '@sourcegraph/extensions-client-common/lib/extensions/manager/ExtensionsList'
+import {
+    ConfigurationCascadeProps,
+    ConfigurationSubject,
+    Settings,
+} from '@sourcegraph/extensions-client-common/lib/settings'
 import * as React from 'react'
 import { render } from 'react-dom'
 import { Route } from 'react-router'
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter, RouteComponentProps } from 'react-router-dom'
 import { Button, FormGroup, Input, Label } from 'reactstrap'
 import { Subscription } from 'rxjs'
 import { clientSettingsUpdates, createExtensionsContextController } from '../../app/backend/extensions'
@@ -63,7 +68,7 @@ class BrowserSettingsEditor extends React.Component<{}, State> {
                         </Label>
                         <Button className="options__cta" color="primary" onClick={this.saveLocalSettings}>
                             Save
-                        </Button>{' '}
+                        </Button>
                     </FormGroup>
                 </div>
             </div>
@@ -71,12 +76,44 @@ class BrowserSettingsEditor extends React.Component<{}, State> {
     }
 }
 
-const renderExtensionsList = routeComponentProps => (
-    <>
-        <ExtensionsList {...routeComponentProps} subject={'Client'} extensions={x} />
-        <BrowserSettingsEditor />
-    </>
-)
+interface OptionsPageProps extends RouteComponentProps<{}> {}
+
+interface OptionsPageState extends ConfigurationCascadeProps<ConfigurationSubject, Settings> {}
+
+class OptionsPage extends React.PureComponent<OptionsPageProps, OptionsPageState> {
+    public state: OptionsPageState = {
+        configurationCascade: { subjects: [], merged: {} },
+    }
+
+    private subscriptions = new Subscription()
+
+    public componentDidMount(): void {
+        this.subscriptions.add(
+            x.context.configurationCascade.subscribe(
+                configurationCascade => this.setState({ configurationCascade }),
+                err => console.error(err)
+            )
+        )
+    }
+
+    public componentWillUnmount(): void {
+        this.subscriptions.unsubscribe()
+    }
+
+    public render(): JSX.Element | null {
+        return (
+            <>
+                <ExtensionsList
+                    {...this.props}
+                    subject={'Client'}
+                    configurationCascade={this.state.configurationCascade}
+                    extensions={x}
+                />
+                <BrowserSettingsEditor />
+            </>
+        )
+    }
+}
 
 const inject = () => {
     const injectDOM = document.createElement('div')
@@ -84,7 +121,7 @@ const inject = () => {
     document.body.appendChild(injectDOM)
     render(
         <BrowserRouter key={0}>
-            <Route path={'/cxp.html'} render={renderExtensionsList} />
+            <Route path={'/cxp.html'} component={OptionsPage} />
         </BrowserRouter>,
         injectDOM
     )

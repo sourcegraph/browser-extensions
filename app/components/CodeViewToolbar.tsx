@@ -1,8 +1,11 @@
+import { ActionsNavItems } from '@sourcegraph/extensions-client-common/lib/app/actions/ActionsNavItems'
 import { ExtensionsProps } from '@sourcegraph/extensions-client-common/lib/context'
-import { ContributedActionsNavItems } from '@sourcegraph/extensions-client-common/lib/contributions/ContributedActions'
-import { Settings } from '@sourcegraph/extensions-client-common/lib/copypasta'
 import { CXPControllerProps } from '@sourcegraph/extensions-client-common/lib/cxp/controller'
-import { ConfigurationSubject } from '@sourcegraph/extensions-client-common/lib/settings'
+import {
+    ConfigurationCascadeProps,
+    ConfigurationSubject,
+    Settings,
+} from '@sourcegraph/extensions-client-common/lib/settings'
 import { ContributableMenu } from 'cxp/module/protocol'
 import * as React from 'react'
 import { Subscription } from 'rxjs'
@@ -17,7 +20,9 @@ export interface ButtonProps {
     iconStyle?: React.CSSProperties
 }
 
-interface CodeViewToolbarProps extends ExtensionsProps<ConfigurationSubject, Settings>, CXPControllerProps {
+interface CodeViewToolbarProps
+    extends ExtensionsProps<ConfigurationSubject, Settings>,
+        CXPControllerProps<ConfigurationSubject, Settings> {
     repoPath: string
     filePath: string
 
@@ -31,12 +36,14 @@ interface CodeViewToolbarProps extends ExtensionsProps<ConfigurationSubject, Set
     buttonProps: ButtonProps
 }
 
-export class CodeViewToolbar extends React.Component<CodeViewToolbarProps> {
-    private subscriptions = new Subscription()
+interface CodeViewToolbarState extends ConfigurationCascadeProps<ConfigurationSubject, Settings> {}
 
-    public componentWillUnmount(): void {
-        this.subscriptions.unsubscribe()
+export class CodeViewToolbar extends React.Component<CodeViewToolbarProps, CodeViewToolbarState> {
+    public state: CodeViewToolbarState = {
+        configurationCascade: { subjects: [], merged: {} },
     }
+
+    private subscriptions = new Subscription()
 
     public componentDidMount(): void {
         storage.onChanged(items => {
@@ -44,13 +51,24 @@ export class CodeViewToolbar extends React.Component<CodeViewToolbarProps> {
                 setServerUrls(items.serverUrls.newValue)
             }
         })
+
+        this.subscriptions.add(
+            this.props.extensions.context.configurationCascade.subscribe(
+                configurationCascade => this.setState({ configurationCascade }),
+                err => console.error(err)
+            )
+        )
+    }
+
+    public componentWillUnmount(): void {
+        this.subscriptions.unsubscribe()
     }
 
     public render(): JSX.Element | null {
         return (
             <div style={{ display: 'inline-flex', verticalAlign: 'middle', alignItems: 'center' }}>
                 <ul className="nav">
-                    <ContributedActionsNavItems
+                    <ActionsNavItems
                         menu={ContributableMenu.EditorTitle}
                         cxpController={this.props.cxpController}
                         extensions={this.props.extensions}

@@ -1,11 +1,11 @@
 import { Controller as ExtensionsContextController } from '@sourcegraph/extensions-client-common/lib/controller'
-import { Settings } from '@sourcegraph/extensions-client-common/lib/copypasta'
 import { gql, graphQLContent } from '@sourcegraph/extensions-client-common/lib/graphql'
 import {
     ConfigurationCascade,
     ConfigurationSubject,
     gqlToCascade,
     mergeSettings,
+    Settings,
 } from '@sourcegraph/extensions-client-common/lib/settings'
 import CaretDown from '@sourcegraph/icons/lib/CaretDown'
 import Loader from '@sourcegraph/icons/lib/Loader'
@@ -140,8 +140,8 @@ storage
     )
     .subscribe(cascade => gqlConfigurationCascade.next(cascade))
 
-export function createExtensionsContextController(): ExtensionsContextController<ConfigurationSubject> {
-    return new ExtensionsContextController<ConfigurationSubject>({
+export function createExtensionsContextController(): ExtensionsContextController<ConfigurationSubject, Settings> {
+    return new ExtensionsContextController<ConfigurationSubject, Settings>({
         configurationCascade: combineLatest(gqlConfigurationCascade, storageConfigurationCascade).pipe(
             map(([gqlCascade, storageCascade]) => mergeCascades(gqlToCascade(gqlCascade), storageCascade)),
             distinctUntilChanged((a, b) => isEqual(a, b))
