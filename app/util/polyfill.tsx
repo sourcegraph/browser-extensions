@@ -11,7 +11,9 @@ import { URL, URLSearchParams } from 'whatwg-url'
 const GLOBAL = global as any
 GLOBAL.URL = URL
 GLOBAL.URLSearchParams = URLSearchParams
-;(window.URL.createObjectURL as any) = createObjectURL
+if (createObjectURL) {
+    window.URL.createObjectURL = createObjectURL
+}
 
 // Safari doesn't implement intersection-observer
 require('intersection-observer')
