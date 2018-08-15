@@ -289,7 +289,7 @@ const positionStr = (pos: Position) => pos.line + '' + (pos.character ? ',' + po
 /**
  * The inverse of parseRepoURI, this generates a string from parsed values.
  */
-export function makeRepoURI<T extends ParsedRepoURI>(parsed: T): RepoURI {
+export function makeRepoURI(parsed: ParsedRepoURI): RepoURI {
     const rev = parsed.commitID || parsed.rev
     let uri = `git://${parsed.repoPath}`
     uri += rev ? '?' + rev : ''
