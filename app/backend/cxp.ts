@@ -1,5 +1,6 @@
 import { createController as createCXPController } from '@sourcegraph/extensions-client-common/lib/cxp/controller'
 import { ConfiguredExtension } from '@sourcegraph/extensions-client-common/lib/extensions/extension'
+import { ExtensionPlatform } from '@sourcegraph/extensions-client-common/lib/schema/extension.schema'
 import { ClientOptions } from 'cxp/module/client/client'
 import { Environment } from 'cxp/module/environment/environment'
 import { Extension } from 'cxp/module/environment/extension'
@@ -49,7 +50,7 @@ combineLatest(
         }
     )
 
-const createPlatformMessageTransports = ({ platform }) =>
+const createPlatformMessageTransports = ({ platform }: { platform: ExtensionPlatform }) =>
     new Promise<MessageTransports>((resolve, reject) => {
         const channelID = uuid.v4()
         const port = chrome.runtime.connect({ name: channelID })
