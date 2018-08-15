@@ -132,6 +132,7 @@ function shouldResponseTriggerRetryOrError(response: any): boolean {
  *
  * @param query The GraphQL query
  * @param variables A key/value object with variable values
+ * @param variables An array of Sourcegraph URLs to potentially query
  * @return Observable That emits the result or errors if the HTTP request failed
  */
 export function queryGraphQL(
