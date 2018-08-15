@@ -408,25 +408,44 @@ const spawnAndConnect = ({ platform, port }): Promise<void> =>
         }
     })
 
-// This is the one and only callback that runs when a content script connects to
-// the background script. Content scripts that want a CXP connection can request
-// for the background script to spawn a web worker or connect to a socket.io
-// server. The content scripts always connect to the `CONTROL` port first and
-// pass the extension ID and URL (to the JS bundle or socket.io server). The
-// `CONTROL` port then spawns the web worker or connects to the socket.io server
-// and responds with a the name of a new port to which the content script can
-// connect in order to speak CXP.
+// This is the bridge between content scripts (that want to connect to CXP
+// extensions) and the background script (that spawns JS bundles or connects to
+// WebSocket endpoints).:
 chrome.runtime.onConnect.addListener(port => {
-    const cb = message => {
-        port.onMessage.removeListener(cb)
+    /**
+     * Executes the callback only on the first message that's received on the port.
+     */
+    const onFirstMessage = (port: chrome.runtime.Port, callback: (message: any) => void) => {
+        const cb = message => {
+            port.onMessage.removeListener(cb)
+            callback(message)
+        }
+        port.onMessage.addListener(cb)
+    }
+
+    // When a content script wants to create a connection to a CXP extension, it
+    // first connects to the background script on a random port and sends a
+    // message containing the platform information for that CXP extension (e.g.
+    // a JS bundle at localhost:1234/index.js).
+    onFirstMessage(port, message => {
+        // The background script receives the message and attempts to spawn the
+        // extension:
         spawnAndConnect({ platform: message.platform, port }).then(
+            // If spawning succeeds, the background script sends {} (so the
+            // content script knows it succeeded) and the port follows CXP
+            // after that.
             () => {
+                // Success is represented by the absence of an error
                 port.postMessage({})
             },
+            // If spawning fails, the background script sends { error } (so the
+            // content script knows it failed) and the port is immediately
+            // disconnected. There is always a 1-1 correspondence between ports
+            // and content scripts, so this won't disrupt any other connections.
             error => {
                 port.postMessage({ error })
+                port.disconnect()
             }
         )
-    }
-    port.onMessage.addListener(cb)
+    })
 })
