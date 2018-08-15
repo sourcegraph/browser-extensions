@@ -2,6 +2,7 @@ import * as React from 'react'
 import { createPortal } from 'react-dom'
 import { fromEvent, merge, Subscription } from 'rxjs'
 import { debounceTime } from 'rxjs/operators'
+import { LSP } from '../backend/lsp'
 import { resolveParentRev } from '../repo/backend'
 import { convertNode, createTooltips, hideTooltip, isTooltipDocked } from '../repo/tooltips'
 import { TooltipPortal } from './TooltipPortal'
@@ -10,6 +11,7 @@ import { BitbucketState, getRevisionState } from './utils/util'
 interface Props {
     container: HTMLElement
     bitbucketState: BitbucketState
+    lsp: LSP
 }
 
 interface State {
@@ -141,6 +143,7 @@ export class BitbucketMount extends React.Component<Props, State> {
                         event={this.state.event}
                         element={this.state.element}
                         docked={this.state.docked}
+                        lsp={this.props.lsp}
                     />,
                     this.state.element
                 )}

@@ -1,24 +1,18 @@
 import { DiffPart, JumpURLFetcher } from '@sourcegraph/codeintellify'
 import { isErrorLike } from '@sourcegraph/codeintellify/lib/errors'
-import { InitializeResult } from 'cxp/module/protocol'
+import { Controller } from 'cxp/module/environment/controller'
+import { Extension } from 'cxp/module/environment/extension'
+import { ConfigurationCascade, InitializeResult } from 'cxp/module/protocol'
 import { HoverMerged } from 'cxp/module/types/hover'
 import { Observable, of } from 'rxjs'
 import { ajax, AjaxResponse } from 'rxjs/ajax'
-import { catchError, map, mergeMap, take, tap } from 'rxjs/operators'
+import { catchError, map, tap } from 'rxjs/operators'
 import { Definition, TextDocumentIdentifier } from 'vscode-languageserver-types'
 import { ServerCapabilities, TextDocumentPositionParams } from 'vscode-languageserver/lib/main'
 import { AbsoluteRepoFile, AbsoluteRepoFilePosition, AbsoluteRepoLanguageFile, parseRepoURI } from '../repo'
-import {
-    getModeFromPath,
-    isPrivateRepository,
-    repoUrlCache,
-    sourcegraphUrl,
-    supportedModes,
-    useCXP,
-} from '../util/context'
+import { getModeFromPath, isPrivateRepository, repoUrlCache, sourcegraphUrl, supportedModes } from '../util/context'
 import { memoizeObservable } from '../util/memoize'
 import { toAbsoluteBlobURL } from '../util/url'
-import { CXP_CONTROLLER } from './cxp'
 import { normalizeAjaxError } from './errors'
 import { getHeaders } from './headers'
 
@@ -113,37 +107,10 @@ const toTextDocumentPositionParams = (pos: AbsoluteRepoFilePosition): TextDocume
     },
 })
 
-export const fetchHover = (pos: AbsoluteRepoFilePosition): Observable<HoverMerged | null> =>
-    useCXP.pipe(
-        take(1),
-        mergeMap(
-            v =>
-                v
-                    ? CXP_CONTROLLER.registries.textDocumentHover
-                          .getHover(toTextDocumentPositionParams(pos))
-                          .pipe(map(hover => (hover === null ? HoverMerged.from([]) : hover)))
-                    : memoizeObservable((ctx: AbsoluteRepoFilePosition) =>
-                          sendLSPRequest('textDocument/hover', toTextDocumentPositionParams(ctx), ctx)
-                      )(pos)
-        )
-    )
-
-export const fetchDefinition = (pos: AbsoluteRepoFilePosition): Observable<Definition> =>
-    useCXP.pipe(
-        take(1),
-        mergeMap(
-            v =>
-                v
-                    ? CXP_CONTROLLER.registries.textDocumentDefinition.getLocation(toTextDocumentPositionParams(pos))
-                    : memoizeObservable<AbsoluteRepoFilePosition, Definition>((ctx: AbsoluteRepoFilePosition) =>
-                          sendLSPRequest('textDocument/definition', toTextDocumentPositionParams(ctx), ctx).pipe(
-                              map(definition => definition as any)
-                          )
-                      )(pos)
-        )
-    )
-
-export function fetchJumpURL(pos: AbsoluteRepoFilePosition): Observable<string | null> {
+export function fetchJumpURL(
+    fetchDefinition: LSP['fetchDefinition'],
+    pos: AbsoluteRepoFilePosition
+): Observable<string | null> {
     return fetchDefinition(pos).pipe(
         map(def => {
             const defArray = Array.isArray(def) ? def : [def]
@@ -160,7 +127,10 @@ export function fetchJumpURL(pos: AbsoluteRepoFilePosition): Observable<string |
 }
 
 export type JumpURLLocation = AbsoluteRepoFilePosition & { rev: string } & { part?: DiffPart }
-export function createJumpURLFetcher(buildURL: (pos: JumpURLLocation) => string): JumpURLFetcher {
+export function createJumpURLFetcher(
+    fetchDefinition: LSP['fetchDefinition'],
+    buildURL: (pos: JumpURLLocation) => string
+): JumpURLFetcher {
     return ({ line, character, part, commitID, repoPath, ...rest }) =>
         fetchDefinition({ ...rest, commitID, repoPath, position: { line, character } }).pipe(
             map(def => {
@@ -191,7 +161,7 @@ export function createJumpURLFetcher(buildURL: (pos: JumpURLLocation) => string)
  */
 const unsupportedModes = new Set<string>()
 
-export const fetchServerCapabilities = (pos: AbsoluteRepoLanguageFile): Observable<ServerCapabilities | undefined> => {
+const fetchServerCapabilities = (pos: AbsoluteRepoLanguageFile): Observable<ServerCapabilities | undefined> => {
     // We're only interested in the InitializeResult, so we don't pass any requests.
     const body = wrapLSP([], pos)
     const url = repoUrlCache[pos.repoPath] || sourcegraphUrl
@@ -239,3 +209,31 @@ function canFetchForURL(url: string): boolean {
     }
     return true
 }
+
+export interface LSP {
+    fetchHover: (pos: AbsoluteRepoFilePosition) => Observable<HoverMerged | null>
+    fetchDefinition: (pos: AbsoluteRepoFilePosition) => Observable<Definition>
+    fetchServerCapabilities: (pos: AbsoluteRepoLanguageFile) => Observable<ServerCapabilities | undefined>
+}
+
+export const apiXlang: LSP = {
+    fetchHover: memoizeObservable((ctx: AbsoluteRepoFilePosition) =>
+        sendLSPRequest('textDocument/hover', toTextDocumentPositionParams(ctx), ctx)
+    ),
+    fetchDefinition: memoizeObservable<AbsoluteRepoFilePosition, Definition>((ctx: AbsoluteRepoFilePosition) =>
+        sendLSPRequest('textDocument/definition', toTextDocumentPositionParams(ctx), ctx).pipe(
+            map(definition => definition as any)
+        )
+    ),
+    fetchServerCapabilities,
+}
+
+export const createCXPLSP = <X extends Extension, C extends ConfigurationCascade>(cxpController: Controller<X, C>) => ({
+    fetchHover: pos =>
+        cxpController.registries.textDocumentHover
+            .getHover(toTextDocumentPositionParams(pos))
+            .pipe(map(hover => (hover === null ? HoverMerged.from([]) : hover))),
+    fetchDefinition: pos =>
+        cxpController.registries.textDocumentDefinition.getLocation(toTextDocumentPositionParams(pos)),
+    fetchServerCapabilities,
+})

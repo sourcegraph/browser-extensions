@@ -9,7 +9,7 @@ import { Link } from 'react-router-dom'
 import { forkJoin, Observable, Subject } from 'rxjs'
 import { catchError, distinctUntilChanged, map, switchMap } from 'rxjs/operators'
 import { asError, ErrorLike, isErrorLike } from '../backend/errors'
-import { EMODENOTFOUND, fetchServerCapabilities } from '../backend/lsp'
+import { EMODENOTFOUND, LSP } from '../backend/lsp'
 import { isPhabricator } from '../context'
 import { AbsoluteRepoFile } from '../repo'
 import { fetchLangServer } from '../repo/backend'
@@ -48,7 +48,7 @@ const propsToStateUpdate = (obs: Observable<CodeIntelStatusIndicatorProps>) =>
     obs.pipe(
         map(({ filePath, ...rest }) => ({ ...rest, filePath, language: getModeFromPath(filePath) })),
         distinctUntilChanged((a, b) => a.language === a.language),
-        switchMap(({ repoPath, commitID, filePath, language }) => {
+        switchMap(({ repoPath, commitID, filePath, language, lsp: { fetchServerCapabilities } }) => {
             if (!language) {
                 return [null]
             }
@@ -78,6 +78,7 @@ interface CodeIntelStatusIndicatorProps extends AbsoluteRepoFile {
      * @param enabled is whether code intelligence is enabled or not.
      */
     onChange?: (enabled: boolean) => void
+    lsp: LSP
 }
 interface CodeIntelStatusIndicatorState {
     /** The language server, error, undefined while loading or null if no langserver registered. */

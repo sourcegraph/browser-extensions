@@ -10,6 +10,7 @@ import { ContributableMenu } from 'cxp/module/protocol'
 import * as React from 'react'
 import { Subscription } from 'rxjs'
 import storage from '../../extension/storage'
+import { LSP } from '../backend/lsp'
 import { setServerUrls } from '../util/context'
 import { CodeIntelStatusIndicator } from './CodeIntelStatusIndicator'
 import { OpenOnSourcegraph } from './OpenOnSourcegraph'
@@ -34,6 +35,8 @@ interface CodeViewToolbarProps
     onEnabledChange?: (enabled: boolean) => void
 
     buttonProps: ButtonProps
+
+    lsp: LSP
 }
 
 interface CodeViewToolbarState extends ConfigurationCascadeProps<ConfigurationSubject, Settings> {}
@@ -81,6 +84,7 @@ export class CodeViewToolbar extends React.Component<CodeViewToolbarProps, CodeV
                     commitID={this.props.baseCommitID}
                     filePath={this.props.filePath}
                     onChange={this.props.onEnabledChange}
+                    lsp={this.props.lsp}
                 />
                 <OpenOnSourcegraph
                     label={`View File${this.props.headCommitID ? ' (base)' : ''}`}

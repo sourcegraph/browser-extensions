@@ -2,7 +2,7 @@ import { isEmpty } from 'lodash'
 import * as React from 'react'
 import { fromEvent, interval, merge, Observable, Subject, Subscription } from 'rxjs'
 import { catchError, debounceTime, filter, map, switchMap, take, takeUntil, tap, zip } from 'rxjs/operators'
-import { fetchHover, fetchJumpURL, isEmptyHover } from '../backend/lsp'
+import { apiXlang, fetchJumpURL, isEmptyHover, LSP } from '../backend/lsp'
 import * as github from '../github/util'
 import {
     AbsoluteRepoFile,
@@ -57,6 +57,7 @@ interface Props extends AbsoluteRepoFile, Partial<PositionSpec> {
     isSplitDiff: boolean
     isBase: boolean
     buttonProps: ButtonProps
+    lsp?: LSP
 }
 
 interface State {
@@ -70,6 +71,7 @@ export class BlobAnnotator extends React.Component<Props, State> {
     private fixedTooltip = new Subject<Props>()
     private subscriptions = new Subscription()
     private cells = new Map<number, CodeCell>()
+    private lsp = apiXlang
 
     constructor(props: Props) {
         super(props)
@@ -79,6 +81,7 @@ export class BlobAnnotator extends React.Component<Props, State> {
         this.fileExtension = getPathExtension(this.props.filePath)
         this.isDelta = this.props.isDelta || (this.props.isCommit || this.props.isPullRequest)
         this.updateCodeCells()
+        this.lsp = props.lsp || apiXlang
     }
 
     // BlobAnnotator will only ever recieve new props when it is being rendered
@@ -182,6 +185,7 @@ export class BlobAnnotator extends React.Component<Props, State> {
                         commitID={this.props.commitID}
                         filePath={this.props.filePath}
                         onChange={this.onCodeIntelligenceEnabledChange}
+                        lsp={this.lsp}
                     />
                 )}
                 {this.state.showOpenFileCTA && (
@@ -496,7 +500,7 @@ export class BlobAnnotator extends React.Component<Props, State> {
      * tooltip is defined, it will update the target styling.
      */
     private getTooltip(target: HTMLElement, ctx: AbsoluteRepoFilePosition): Observable<TooltipData> {
-        return fetchHover(ctx).pipe(
+        return this.lsp.fetchHover(ctx).pipe(
             tap(data => {
                 if (isEmptyHover(data)) {
                     // short-cirtuit, no tooltip data
@@ -513,7 +517,7 @@ export class BlobAnnotator extends React.Component<Props, State> {
      * This Observable will emit exactly one value before it completes.
      */
     private getDefinition(ctx: AbsoluteRepoFilePosition): Observable<string | null> {
-        return fetchJumpURL(ctx)
+        return fetchJumpURL(this.lsp.fetchDefinition, ctx)
     }
 
     /**
