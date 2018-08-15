@@ -371,10 +371,12 @@ const spawnAndConnect = ({ platform, port }): Promise<void> =>
     new Promise((resolve, reject) => {
         switch (platform.type) {
             case 'bundle':
-                spawnWebWorkerFromURL(platform.url).then(worker => {
-                    connectPortAndWorker(port, worker)
-                    resolve()
-                })
+                spawnWebWorkerFromURL(platform.url)
+                    .then(worker => {
+                        connectPortAndWorker(port, worker)
+                        resolve()
+                    })
+                    .catch(reject)
                 break
             // TODO(chris): rename to socket.io
             case 'websocket':
@@ -387,13 +389,14 @@ const spawnAndConnect = ({ platform, port }): Promise<void> =>
                         connectPortAndSocketIOClient(port, socket)
                         resolve()
                     })
-                    socket.on('error', error => console.error(error))
+                    socket.on('error', reject)
                 } else {
                     const webSocket = new WebSocket(platform.url)
                     webSocket.addEventListener('open', () => {
                         connectPortAndWebSocket(port, webSocket)
                         resolve()
                     })
+                    webSocket.addEventListener('error', reject)
                 }
                 break
             default:
