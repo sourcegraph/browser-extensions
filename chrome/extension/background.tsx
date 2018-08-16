@@ -303,6 +303,7 @@ function setDefaultBrowserAction(): void {
  * Fetches JavaScript from a URL and runs it in a web worker.
  */
 function spawnWebWorkerFromURL(url: string): Promise<Worker> {
+    // TODO(chris) see if it's possible to pass the url directly
     return ajax({
         url,
         crossDomain: true,
