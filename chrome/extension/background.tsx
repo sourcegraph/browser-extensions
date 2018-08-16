@@ -367,6 +367,10 @@ const connectPortAndSocketIOClient = (port: chrome.runtime.Port, socket: SocketI
     socket.on('disconnect', () => port.disconnect())
 }
 
+/**
+ * Either creates a web worker or connects to a WebSocket based on the given
+ * platform, then connects the given port to it.
+ */
 const spawnAndConnect = ({ platform, port }): Promise<void> =>
     new Promise((resolve, reject) => {
         switch (platform.type) {
