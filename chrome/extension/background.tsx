@@ -341,29 +341,9 @@ const connectPortAndWebSocket = (port: chrome.runtime.Port, webSocket: WebSocket
     port.onMessage.addListener(m => {
         webSocket.send(JSON.stringify(m))
     })
-    // TODO(chris): test termination of: [worker, websocket, socket.io, port]
+    // TODO(chris): test termination of: [worker, websocket, port]
     port.onDisconnect.addListener(() => webSocket.close())
     webSocket.addEventListener('close', () => port.disconnect())
-}
-
-/**
- * Connects a port and socket.io client by forwarding messages from one to the other and
- * vice versa.
- */
-const connectPortAndSocketIOClient = (port: chrome.runtime.Port, socket: SocketIOClient.Socket) => {
-    socket.on('message', m => {
-        port.postMessage(m)
-    })
-    // TODO(chris): forward errors
-    // TODO(chris): try sharing extensions across pages
-    // try https://sourcegraph.sgdev.org/github.com/sourcegraph/sourcegraph/-/blob/web/src/cxp/webWorker.ts
-    // try sending a shutdown message or something
-    // somehow avoid zombies... so many things can go wrong
-    port.onMessage.addListener(m => {
-        socket.emit('message', m)
-    })
-    port.onDisconnect.addListener(() => socket.disconnect())
-    socket.on('disconnect', () => port.disconnect())
 }
 
 /**
@@ -381,26 +361,13 @@ const spawnAndConnect = ({ platform, port }): Promise<void> =>
                     })
                     .catch(reject)
                 break
-            // TODO(chris): rename to socket.io
             case 'websocket':
-                // TODO(chris): split this into 2 cases once `socket.io` is a
-                // supported platform type
-                const interpretWEBSOCKETAsSOCKETIO = false
-                if (interpretWEBSOCKETAsSOCKETIO) {
-                    const socket = io.connect(platform.url)
-                    socket.on('connect', () => {
-                        connectPortAndSocketIOClient(port, socket)
-                        resolve()
-                    })
-                    socket.on('error', reject)
-                } else {
-                    const webSocket = new WebSocket(platform.url)
-                    webSocket.addEventListener('open', () => {
-                        connectPortAndWebSocket(port, webSocket)
-                        resolve()
-                    })
-                    webSocket.addEventListener('error', reject)
-                }
+                const webSocket = new WebSocket(platform.url)
+                webSocket.addEventListener('open', () => {
+                    connectPortAndWebSocket(port, webSocket)
+                    resolve()
+                })
+                webSocket.addEventListener('error', reject)
                 break
             default:
                 reject(
