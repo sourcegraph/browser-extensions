@@ -1,10 +1,6 @@
 {
   "compilerOptions": {
     "baseUrl": "",
-    "paths": {
-      "rxjs": ["node_modules/rxjs"],
-      "rxjs/*": ["node_modules/rxjs/*"]
-    },
     "noErrorTruncation": true,
     "outDir": "./out",
     "target": "es2015",
