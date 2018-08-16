@@ -334,13 +334,11 @@ const connectPortAndWorker = (port: chrome.runtime.Port, worker: Worker) => {
  * vice versa.
  */
 const connectPortAndWebSocket = (port: chrome.runtime.Port, webSocket: WebSocket) => {
-    webSocket.addEventListener('error', console.log)
+    webSocket.addEventListener('error', err => console.error(err))
     webSocket.addEventListener('message', m => {
-        console.log('WebSocket -> port', m)
         port.postMessage(JSON.parse(m.data))
     })
     port.onMessage.addListener(m => {
-        console.log('port -> WebSocket', m)
         webSocket.send(JSON.stringify(m))
     })
     // TODO(chris): test termination of: [worker, websocket, socket.io, port]
