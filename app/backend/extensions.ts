@@ -15,7 +15,7 @@ import * as JSONC from '@sqs/jsonc-parser'
 import { applyEdits } from '@sqs/jsonc-parser'
 import { removeProperty, setProperty } from '@sqs/jsonc-parser/lib/edit'
 import { flatten, isEqual } from 'lodash'
-import { combineLatest, Observable, ReplaySubject, Subject, throwError } from 'rxjs'
+import { combineLatest, Observable, Subject, throwError } from 'rxjs'
 import { distinctUntilChanged, map, mergeMap, switchMap, take } from 'rxjs/operators'
 import storage from '../../extension/storage'
 import { getContext } from './context'
@@ -24,25 +24,7 @@ import { queryGraphQL } from './graphql'
 
 // TODO clicking on an extension on the options page needs to take you to your Sourcegraph instance's registry. Right now it takes you nowhere.
 
-const mysub: ConfigurationSubject = {
-    // TODO fill in legit values
-    id: 'Client',
-    settingsURL: 'foo',
-    viewerCanAdminister: true,
-    __typename: 'Client',
-    displayName: 'me',
-}
-
-export const clientSettingsUpdates: Observable<string> = (() => {
-    const update = new ReplaySubject<string>(1)
-    storage.getSync(storageItems => update.next(storageItems.clientSettings))
-    storage.onChanged(changes => {
-        if (changes.clientSettings) {
-            update.next(changes.clientSettings.newValue)
-        }
-    })
-    return update
-})()
+export const clientSettingsUpdates = storage.observeSync('clientSettings')
 
 const storageConfigurationCascade: Observable<
     ConfigurationCascade<ConfigurationSubject, Settings>
@@ -51,7 +33,13 @@ const storageConfigurationCascade: Observable<
     map(clientSettings => ({
         subjects: [
             {
-                subject: mysub,
+                subject: {
+                    id: 'Client',
+                    settingsURL: 'N/A',
+                    viewerCanAdminister: true,
+                    __typename: 'Client',
+                    displayName: 'Client',
+                } as ConfigurationSubject,
                 settings: clientSettings,
             },
         ],
@@ -111,34 +99,30 @@ const configurationCascadeFragment = gql`
  * Always represents the entire configuration cascade; i.e., it contains the
  * individual configs from the various config subjects (orgs, user, etc.).
  */
-export const gqlConfigurationCascade = new ReplaySubject<GQL.IConfigurationCascade>(1)
-storage
-    .observeSync('sourcegraphURL')
-    .pipe(
-        switchMap(url =>
-            queryGraphQL(
-                getContext({ repoKey: '', isRepoSpecific: false }),
-                gql`
-                    query Configuration {
-                        viewerConfiguration {
-                            ...ConfigurationCascadeFields
-                        }
+export const gqlConfigurationCascade = storage.observeSync('sourcegraphURL').pipe(
+    switchMap(url =>
+        queryGraphQL(
+            getContext({ repoKey: '', isRepoSpecific: false }),
+            gql`
+                query Configuration {
+                    viewerConfiguration {
+                        ...ConfigurationCascadeFields
                     }
-                    ${configurationCascadeFragment}
-                `[graphQLContent],
-                {},
-                [url]
-            ).pipe(
-                map(({ data, errors }) => {
-                    if (!data || !data.viewerConfiguration) {
-                        throw createAggregateError(errors)
-                    }
-                    return data.viewerConfiguration
-                })
-            )
+                }
+                ${configurationCascadeFragment}
+            `[graphQLContent],
+            {},
+            [url]
+        ).pipe(
+            map(({ data, errors }) => {
+                if (!data || !data.viewerConfiguration) {
+                    throw createAggregateError(errors)
+                }
+                return data.viewerConfiguration
+            })
         )
     )
-    .subscribe(cascade => gqlConfigurationCascade.next(cascade))
+)
 
 export function createExtensionsContextController(): ExtensionsContextController<ConfigurationSubject, Settings> {
     return new ExtensionsContextController<ConfigurationSubject, Settings>({

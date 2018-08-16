@@ -1,5 +1,4 @@
 // We want to polyfill first.
-// prettier-ignore
 import '../../app/util/polyfill'
 
 import { ExtensionsList } from '@sourcegraph/extensions-client-common/lib/extensions/manager/ExtensionsList'

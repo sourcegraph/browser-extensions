@@ -1,5 +1,4 @@
 import * as path from 'path'
-import { ReplaySubject } from 'rxjs'
 import { isPhabricator } from '../../app/context'
 import * as runtime from '../../extension/runtime'
 import storage from '../../extension/storage'
@@ -20,13 +19,7 @@ export let repositoryFileTreeEnabled = false
 
 export let inlineSymbolSearchEnabled = false
 
-export const useCXP = new ReplaySubject<boolean>(1)
-storage.getSync(items => useCXP.next(items.useCXP))
-storage.onChanged(changes => {
-    if (changes.useCXP) {
-        useCXP.next(changes.useCXP.newValue)
-    }
-})
+export const useCXP = storage.observeSync('useCXP')
 
 interface UrlCache {
     [key: string]: string

@@ -1,4 +1,5 @@
-import { ReplaySubject } from 'rxjs'
+import { Observable } from 'rxjs'
+import { shareReplay } from 'rxjs/operators'
 import SafariStorageArea, { SafariSettingsChangeMessage, stringifyStorageArea } from './safari/StorageArea'
 import { StorageChange, StorageItems } from './types'
 
@@ -16,11 +17,11 @@ export interface Storage {
     getSync: (callback: (items: StorageItems) => void) => void
     getSyncItem: (key: keyof StorageItems, callback: (items: StorageItems) => void) => void
     setSync: (items: Partial<StorageItems>, callback?: (() => void) | undefined) => void
-    observeSync: <T extends keyof StorageItems>(key: T) => ReplaySubject<StorageItems[T]>
+    observeSync: <T extends keyof StorageItems>(key: T) => Observable<StorageItems[T]>
     getLocal: (callback: (items: StorageItems) => void) => void
     getLocalItem: (key: keyof StorageItems, callback: (items: StorageItems) => void) => void
     setLocal: (items: Partial<StorageItems>, callback?: (() => void) | undefined) => void
-    observeLocal: <T extends keyof StorageItems>(key: T) => ReplaySubject<StorageItems[T]>
+    observeLocal: <T extends keyof StorageItems>(key: T) => Observable<StorageItems[T]>
     addSyncMigration: (migrate: MigrateFunc) => void
     addLocalMigration: (migrate: MigrateFunc) => void
     onChanged: (listener: (changes: Partial<StorageChange>, areaName: string) => void) => void
@@ -64,20 +65,21 @@ const onChanged = (listener: (changes: Partial<StorageChange>, areaName: string)
     }
 }
 
-const observe = (area: chrome.storage.StorageArea) => <T extends keyof StorageItems>(key: T) => {
-    const itemsSubject = new ReplaySubject<StorageItems[T]>(1)
-    get(area)(items => {
-        const item = items[key]
-        itemsSubject.next(item)
-    })
-    onChanged(changes => {
-        const change = changes[key]
-        if (change && change.newValue) {
-            itemsSubject.next(change.newValue)
-        }
-    })
-    return itemsSubject
-}
+const observe = (area: chrome.storage.StorageArea) => <T extends keyof StorageItems>(
+    key: T
+): Observable<StorageItems[T]> =>
+    new Observable<StorageItems[T]>(observer => {
+        get(area)(items => {
+            const item = items[key]
+            observer.next(item)
+        })
+        onChanged(changes => {
+            const change = changes[key]
+            if (change && change.newValue) {
+                observer.next(change.newValue)
+            }
+        })
+    }).pipe(shareReplay(1))
 
 const throwNoopErr = () => {
     throw new Error('do not call browser extension apis from an in page script')
