@@ -1,7 +1,7 @@
 import { IClientConfigurationDetails } from '@sourcegraph/extensions-client-common/lib/schema/graphqlschema'
 import { Observable } from 'rxjs'
 import { catchError, map } from 'rxjs/operators'
-import { GQL } from '../../types/gqlschema'
+import * as GQL from './graphqlschema'
 import { getContext } from './context'
 import { queryGraphQLNoRetry } from './graphql'
 

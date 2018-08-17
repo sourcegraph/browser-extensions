@@ -128,6 +128,10 @@ Click reload for Sourcegraph at `about:debugging`
   - Download the `ngrok` executable https://dashboard.ngrok.com/get-started, authenticate, and run `./ngrok localhost 3080`
   - Visit the URL it spits out, sign in, and add the URL to your Safari extension (to the left of the address bar - don't change Settings in the Extension Builder)
 
+### Updating GraphQL types
+
+`npm run graphql` fetches the schema from the live GraphQL API and updates app/backend/graphqlschema.ts.
+
 ## Testing
 
 Coming soon...

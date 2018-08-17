@@ -3,10 +3,10 @@ import { IQuery } from '@sourcegraph/extensions-client-common/lib/schema/graphql
 import { Observable, throwError } from 'rxjs'
 import { ajax } from 'rxjs/ajax'
 import { catchError, map } from 'rxjs/operators'
-import { GQL } from '../../types/gqlschema'
 import { isPrivateRepository, repoUrlCache, sourcegraphUrl } from '../util/context'
 import { RequestContext } from './context'
 import { AuthRequiredError, createAuthRequiredError, NoSourcegraphURLError } from './errors'
+import * as GQL from './graphqlschema'
 import { getHeaders } from './headers'
 
 /**

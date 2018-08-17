@@ -16,7 +16,7 @@ import {
 import * as permissions from '../../../extension/permissions'
 import storage from '../../../extension/storage'
 import { StorageItems } from '../../../extension/types'
-import { GQL } from '../../../types/gqlschema'
+import * as GQL from '../../backend/graphqlschema'
 import { fetchSite } from '../../backend/server'
 import { setSourcegraphUrl, sourcegraphUrl } from '../../util/context'
 
