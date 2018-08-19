@@ -1,8 +1,8 @@
-@import 'node_modules/@sourcegraph/extensions-client-common/lib/ui/generic/PopoverButton.css';
-@import 'node_modules/@sourcegraph/extensions-client-common/lib/ui/generic/Toggle.css';
+@import 'node_modules/@sourcegraph/extensions-client-common/lib/ui/generic/PopoverButton';
+@import 'node_modules/@sourcegraph/extensions-client-common/lib/ui/generic/Toggle';
 @import 'node_modules/@sourcegraph/extensions-client-common/lib/app/CommandList';
 @import 'node_modules/@sourcegraph/extensions-client-common/lib/app/ExtensionStatus';
-@import 'node_modules/@sourcegraph/extensions-client-common/lib/extensions/manager/ExtensionCard.css';
+@import 'node_modules/@sourcegraph/extensions-client-common/lib/extensions/manager/ExtensionCard';
 
 $body-color-light: #2b3750;
 $body-color-dark: #f2f4f8;

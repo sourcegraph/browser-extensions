@@ -63,6 +63,7 @@
     "extract-text-webpack-plugin": "^4.0.0-beta.0",
     "get-graphql-schema": "^2.1.1",
     "gql2ts": "^1.2.1",
+    "hard-source-webpack-plugin": "^0.12.0",
     "husky": "^0.14.3",
     "jade": "^1.11.0",
     "node-sass": "^4.9.0",

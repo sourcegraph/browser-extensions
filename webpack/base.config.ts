@@ -1,5 +1,5 @@
 import ExtractTextPlugin from 'extract-text-webpack-plugin'
-import sassImportOnce from 'node-sass-import-once'
+import HardSourceWebpackPlugin from 'hard-source-webpack-plugin'
 import * as path from 'path'
 import * as webpack from 'webpack'
 
@@ -32,6 +32,23 @@ export default {
             filename: '../css/[name].bundle.css',
             allChunks: true,
         }),
+        new HardSourceWebpackPlugin({
+            cachePrune: {
+                // Ignore the age of cache entries. Without this, the size of
+                // the cache can balloon past the `sizeThreshold`.
+                maxAge: 0,
+                // The cache size needs to be large enough for the build
+                // artifacts, otherwise the cache will get deleted and rendered
+                // useless. The build artifacts total ~70MB at the time of
+                // writing, so 500MB of cache is plenty.
+                sizeThreshold: 500 * 1024 * 1024,
+            },
+        }),
+        new HardSourceWebpackPlugin.ExcludeModulePlugin([
+            {
+                test: /sass-loader/,
+            },
+        ]),
     ],
     resolve: {
         extensions: ['.ts', '.tsx', '.js'],
@@ -68,10 +85,6 @@ export default {
                         loader: 'sass-loader',
                         options: {
                             includePaths: [__dirname + '/node_modules'],
-                            importer: sassImportOnce,
-                            importOnce: {
-                                css: true,
-                            },
                         },
                     },
                 ]),
