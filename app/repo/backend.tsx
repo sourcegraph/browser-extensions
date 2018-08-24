@@ -100,7 +100,7 @@ export const resolveRepo = memoizeObservable(
             getContext({ repoKey: ctx.repoPath }),
             `query ResolveRepo($repoPath: String!) {
                 repository(uri: $repoPath) {
-                    url
+                    name
                 }
             }`,
             { ...ctx }
@@ -109,8 +109,7 @@ export const resolveRepo = memoizeObservable(
                 if (!result.data || !result.data.repository) {
                     throw new RepoNotFoundError(ctx.repoPath)
                 }
-
-                return result.data.repository.url
+                return result.data.repository.name
             }, catchError((err, caught) => caught))
         ),
     makeRepoURI

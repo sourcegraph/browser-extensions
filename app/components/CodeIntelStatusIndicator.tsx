@@ -213,7 +213,7 @@ export class CodeIntelStatusIndicator extends React.Component<
             <>
                 <h3>No language server connected</h3>
                 Check{' '}
-                <a href="http://langserver.org/" target="_blank">
+                <a className="text-primary" href="http://langserver.org/" target="_blank">
                     langserver.org
                 </a>{' '}
                 for {language} language servers
@@ -248,7 +248,11 @@ export class CodeIntelStatusIndicator extends React.Component<
                             <>
                                 <h3>
                                     Connected to the <wbr />
-                                    <a href={this.state.langServerOrError.homepageURL} target="_blank">
+                                    <a
+                                        className="text-primary"
+                                        href={this.state.langServerOrError.homepageURL}
+                                        target="_blank"
+                                    >
                                         {this.state.langServerOrError.displayName || language} language server
                                     </a>
                                 </h3>
@@ -307,18 +311,28 @@ export class CodeIntelStatusIndicator extends React.Component<
                                 )}
                                 {this.props.userIsSiteAdmin && (
                                     <p className="mt-2 mb-0">
-                                        <a href={`${sourcegraphUrl}/site-admin/code-intelligence`}>Manage</a>
+                                        <a
+                                            className="text-primary"
+                                            href={`${sourcegraphUrl}/site-admin/code-intelligence`}
+                                        >
+                                            Manage
+                                        </a>
                                     </p>
                                 )}
                                 {this.state.langServerOrError.issuesURL && (
                                     <p className="mt-2 mb-0">
-                                        <a href={this.state.langServerOrError.issuesURL} target="_blank">
+                                        <a
+                                            className="text-primary"
+                                            href={this.state.langServerOrError.issuesURL}
+                                            target="_blank"
+                                        >
                                             Report issue
                                         </a>
                                     </p>
                                 )}
                                 <p className="mt-2 mb-0">
                                     <a
+                                        className="text-primary"
                                         onClick={this.toggleCodeIntelligence}
                                         style={{ cursor: 'pointer' }}
                                         target="_blank"

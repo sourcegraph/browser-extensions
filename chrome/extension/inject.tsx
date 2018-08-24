@@ -5,6 +5,7 @@ import '../../app/util/polyfill'
 import { injectBitbucketServer } from '../../app/bitbucket/inject'
 import { injectGitHubApplication } from '../../app/github/inject'
 import { injectPhabricatorApplication } from '../../app/phabricator/app'
+import { injectReviewboardApplication } from '../../app/review-board/inject'
 import { injectSourcegraphApp } from '../../app/sourcegraph/inject'
 import {
     setExecuteSearchEnabled,
@@ -43,7 +44,7 @@ function injectApplication(): void {
         const isPhabricator =
             Boolean(document.querySelector('.phabricator-wordmark')) &&
             Boolean(items.enterpriseUrls.find(url => url === window.location.origin))
-
+        const isReviewBoard = document.getElementById('rbinfo')
         const isGitHub = /^https?:\/\/(www.)?github.com/.test(href)
         const ogSiteName = document.head.querySelector(`meta[property='og:site_name']`) as HTMLMetaElement
         const isGitHubEnterprise = ogSiteName ? ogSiteName.content === 'GitHub Enterprise' : false
@@ -57,7 +58,7 @@ function injectApplication(): void {
                     type: 'insertCSS',
                     payload: { file: 'css/style.bundle.css', origin: window.location.origin },
                 })
-            } else if (isPhabricator || isGitHub || isGitHubEnterprise || isBitbucket) {
+            } else if (isPhabricator || isGitHub || isGitHubEnterprise || isBitbucket || isReviewBoard) {
                 const styleSheet = document.createElement('link') as HTMLLinkElement
                 styleSheet.id = 'ext-style-sheet'
                 styleSheet.rel = 'stylesheet'
@@ -93,6 +94,9 @@ function injectApplication(): void {
         ) {
             setSourcegraphUrl(sourcegraphServerUrl)
             injectBitbucketServer()
+        } else if (isReviewBoard) {
+            setSourcegraphUrl(sourcegraphServerUrl)
+            injectReviewboardApplication()
         }
         setUseCXP(items.useCXP === undefined ? false : items.useCXP)
     }

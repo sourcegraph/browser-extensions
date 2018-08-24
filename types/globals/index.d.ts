@@ -15,6 +15,12 @@ interface Window {
     }
     // Bitbucket has a global require function on the DOM that we rely on to get the current Bitbucket state.
     require: any
+    // Reviewboard has a global RB function on that DOM that we rely on to get ReviewBoard state.
+    RB: {
+        PageManager: {
+            getPage: () => any
+        }
+    }
 }
 
 declare module '*.json' {

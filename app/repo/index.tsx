@@ -300,6 +300,25 @@ export function makeRepoURI(parsed: ParsedRepoURI): RepoURI {
     return uri
 }
 
+export function normalizeRepoPath(origin: string): string {
+    let repoPath = origin
+    repoPath = repoPath.replace('\\', '')
+    if (origin.startsWith('git@')) {
+        repoPath = origin.substr('git@'.length)
+        repoPath = repoPath.replace(':', '/')
+    } else if (origin.startsWith('git://')) {
+        repoPath = origin.substr('git://'.length)
+    } else if (origin.startsWith('https://')) {
+        repoPath = origin.substr('https://'.length)
+    } else if (origin.includes('@')) {
+        // Assume the origin looks like `username@host:repo/path`
+        const split = origin.split('@')
+        repoPath = split[1]
+        repoPath = repoPath.replace(':', '/')
+    }
+    return repoPath.replace(/.git$/, '')
+}
+
 /**
  * A file at an exact commit of a known programming language
  */

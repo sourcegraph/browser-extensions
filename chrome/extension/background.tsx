@@ -46,7 +46,7 @@ storage.getSync(({ sourcegraphURL }) => {
         storage.setSync({ sourcegraphURL: DEFAULT_SOURCEGRAPH_URL })
         setSourcegraphUrl(DEFAULT_SOURCEGRAPH_URL)
     }
-
+    setSourcegraphUrl(sourcegraphURL)
     resolveClientConfiguration().subscribe(
         config => {
             // ClientConfiguration is the new storage option.
