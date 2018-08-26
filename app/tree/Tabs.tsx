@@ -69,7 +69,7 @@ interface TabsProps<T extends string> {
      */
     tabBarEndFragment?: React.ReactFragment
 
-    children: undefined | React.ReactElement<{ key: T }> | (undefined | React.ReactElement<{ key: T }>)[]
+    children: JSX.Element | undefined
 
     id?: string
     className?: string
