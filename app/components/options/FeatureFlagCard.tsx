@@ -2,6 +2,7 @@ import * as React from 'react'
 import { Card, CardBody, CardHeader, Col, Form, FormGroup, Input, Label, Row } from 'reactstrap'
 import storage from '../../../extension/storage'
 import { StorageItems } from '../../../extension/types'
+import { sourcegraphUrl } from '../../util/context'
 
 interface Props {
     storage: StorageItems
@@ -91,7 +92,8 @@ export class FeatureFlagCard extends React.Component<Props, {}> {
                                 <FormGroup check={true}>
                                     <Label check={true}>
                                         <Input onClick={this.onUseCXPToggled} defaultChecked={useCXP} type="checkbox" />{' '}
-                                        Use Sourcegraph extensions
+                                        Use Sourcegraph extensions (visit the registry at{' '}
+                                        <a href={`${sourcegraphUrl}/extensions`}>{`${sourcegraphUrl}/extensions`}</a>)
                                     </Label>
                                 </FormGroup>
                                 <FormGroup check={true}>

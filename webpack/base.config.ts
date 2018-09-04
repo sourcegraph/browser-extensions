@@ -15,7 +15,6 @@ export default {
         background: buildEntry(extEntry, backgroundEntry, '../chrome/extension/background.tsx'),
         link: buildEntry(extEntry, contentEntry, '../chrome/extension/link.tsx'),
         options: buildEntry(extEntry, backgroundEntry, '../chrome/extension/options.tsx'),
-        cxp: buildEntry(extEntry, backgroundEntry, '../chrome/extension/cxp.tsx'),
         inject: buildEntry(extEntry, contentEntry, '../chrome/extension/inject.tsx'),
         phabricator: buildEntry(pageEntry, '../app/phabricator/extension.tsx'),
 

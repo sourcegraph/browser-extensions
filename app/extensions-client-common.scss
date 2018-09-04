@@ -1,28 +1,5 @@
 @import 'node_modules/@sourcegraph/extensions-client-common/lib/ui/generic/PopoverButton.css';
-@import 'node_modules/@sourcegraph/extensions-client-common/lib/ui/generic/Toggle.css';
 @import 'node_modules/@sourcegraph/extensions-client-common/lib/app/CommandList';
-@import 'node_modules/@sourcegraph/extensions-client-common/lib/app/ExtensionStatus';
-@import 'node_modules/@sourcegraph/extensions-client-common/lib/extensions/manager/ExtensionCard.css';
-
-$body-color-light: #2b3750;
-$body-color-dark: #f2f4f8;
-
-.theme-light {
-    --body-color: #{$body-color-light};
-    --body-bg: white;
-    --text-muted: #{$color-light-text-2};
-    --link-color: #566e9f;
-    --link-hover-color: #1d2535;
-    --extension-card-bg: #{lighten($color-light-bg-2, 2.5%)};
-}
-.theme-dark {
-    --body-color: #{$body-color-dark};
-    --body-bg: #151c28;
-    --text-muted: #{$color-text-1};
-    --link-color: #a2b0cd;
-    --link-hover-color: white;
-    --extension-card-bg: #{$color-bg-2};
-}
 
 .command-list {
     @import 'node_modules/bootstrap/scss/list-group';
@@ -38,37 +15,6 @@ $body-color-dark: #f2f4f8;
     position: fixed;
     bottom: 0;
     right: 0;
-}
-
-.configured-extensions-list {
-    h1 {
-        font-size: 32px;
-        line-height: 40px;
-        font-weight: 600;
-        margin: 0 0 1rem;
-    }
-    h2 {
-        font-size: 24px;
-        line-height: 32px;
-        font-weight: 600;
-    }
-    h3 {
-        font-size: 16px;
-        line-height: 24px;
-        font-weight: 600;
-    }
-    h4 {
-        font-size: 14px;
-        line-height: 20px;
-        font-weight: 600;
-    }
-    h5 {
-        font-size: 12px;
-        letter-spacing: 1px;
-        font-weight: 500;
-        text-transform: uppercase;
-        margin: 0;
-    }
 }
 
 :root {

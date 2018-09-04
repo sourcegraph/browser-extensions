@@ -124,16 +124,6 @@
         &-label {
             padding-top: 2px;
         }
-
-        &-textarea {
-            width: 100%;
-            font-size: 14px;
-            border-color: #e4e9f1;
-            margin-bottom: 1rem;
-            // !important overrides Bootstrap's `height: auto`
-            height: 18rem !important;
-            font-family: $code-font-family;
-        }
     }
 
     &__button-icon {

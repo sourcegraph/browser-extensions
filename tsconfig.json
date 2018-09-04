@@ -1,5 +1,9 @@
 {
   "compilerOptions": {
+    "baseUrl": "",
+    "paths": {
+      "rxjs": ["node_modules/rxjs"]
+    },
     "outDir": "./out",
     "target": "es2015",
     "module": "commonjs",
