@@ -3,7 +3,7 @@ import { from, merge, Observable, of, Subject } from 'rxjs'
 import { filter, map, mergeMap } from 'rxjs/operators'
 
 import { DiffPart } from '@sourcegraph/codeintellify'
-import { CodeHost, CodeView, ResolvedCodeView } from './code_intelligence'
+import { CodeHost, CodeView, LineRangeGetter, ResolvedCodeView } from './code_intelligence'
 
 /**
  * Emits a ResolvedCodeView when it's DOM element is on or about to be on the page.
@@ -40,10 +40,7 @@ const emitWhenIntersecting = (margin: number) => {
             })
 
             intersectingElements
-                .pipe(
-                    map(element => codeViewStash.get(element)),
-                    filter(codeView => !!codeView)
-                )
+                .pipe(map(element => codeViewStash.get(element)), filter(codeView => !!codeView))
                 .subscribe(observer)
         })
 }
@@ -131,7 +128,7 @@ export interface CodeViewContent {
 
 export const getContentOfCodeView = (
     codeView: HTMLElement,
-    info: Pick<CodeView, 'dom' | 'isDiff' | 'getLineRanges'>
+    info: Pick<CodeView, 'dom' | 'isDiff'> & { getLineRanges: LineRangeGetter }
 ): CodeViewContent => {
     const getContent = (part?: DiffPart): string => {
         const lines = new Map<number, string>()

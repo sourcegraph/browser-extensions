@@ -1,6 +1,7 @@
-import { AdjustmentDirection, PositionAdjuster } from '@sourcegraph/codeintellify'
+import { AdjustmentDirection, DOMFunctions, PositionAdjuster } from '@sourcegraph/codeintellify'
 import { trimStart } from 'lodash'
 import { map } from 'rxjs/operators'
+
 import { JumpURLLocation } from '../../shared/backend/lsp'
 import { fetchBlobContentLines } from '../../shared/repo/backend'
 import { CodeHost, CodeView, CodeViewResolver, CodeViewWithOutSelector } from '../code_intelligence'
@@ -9,6 +10,7 @@ import {
     getDiffLineRanges,
     getLineRanges,
     searchCodeSnippetDOMFunctions,
+    searchGetLineRanges,
     singleFileDOMFunctions,
 } from './dom_functions'
 import { getCommandPaletteMount } from './extensions'
@@ -42,14 +44,14 @@ const singleFileCodeView: CodeViewWithOutSelector = {
  * Some code snippets get leading white space trimmed. This adjusts based on
  * this. See an example here https://github.com/sourcegraph/browser-extensions/issues/188.
  */
-const adjustPositionForSnippet: PositionAdjuster = ({ direction, codeView, position }) =>
+const createPositionAdjuster = ({ getCodeElementFromLineNumber }: DOMFunctions): PositionAdjuster => ({
+    direction,
+    codeView,
+    position,
+}) =>
     fetchBlobContentLines(position).pipe(
         map(lines => {
-            const codeElement = singleFileDOMFunctions.getCodeElementFromLineNumber(
-                codeView,
-                position.line,
-                position.part
-            )
+            const codeElement = getCodeElementFromLineNumber(codeView, position.line, position.part)
             if (!codeElement) {
                 throw new Error('(adjustPosition) could not find code element for line provided')
             }
@@ -73,20 +75,19 @@ const adjustPositionForSnippet: PositionAdjuster = ({ direction, codeView, posit
 const searchResultCodeView: CodeView = {
     selector: '.code-list-item',
     dom: searchCodeSnippetDOMFunctions,
-    adjustPosition: adjustPositionForSnippet,
+    adjustPosition: createPositionAdjuster(searchCodeSnippetDOMFunctions),
     resolveFileInfo: resolveSnippetFileInfo,
     toolbarButtonProps,
-    getLineRanges,
     isDiff: false,
+    getLineRanges: searchGetLineRanges,
 }
 
 const commentSnippetCodeView: CodeView = {
     selector: '.js-comment-body',
     dom: singleFileDOMFunctions,
     resolveFileInfo: resolveSnippetFileInfo,
-    adjustPosition: adjustPositionForSnippet,
+    adjustPosition: createPositionAdjuster(singleFileDOMFunctions),
     toolbarButtonProps,
-    getLineRanges,
     isDiff: false,
 }
 
@@ -119,6 +120,14 @@ export const githubCodeHost: CodeHost = {
     codeViewResolver,
     check: checkIsGithub,
     getCommandPaletteMount,
+    getHoverOverlayMountParent: () => {
+        const pjaxContainer = document.querySelector<HTMLElement>('#js-repo-pjax-container')
+        if (!pjaxContainer) {
+            throw Error('Unable to find pjax container')
+        }
+
+        return pjaxContainer
+    },
     buildJumpURLLocation: (def: JumpURLLocation) => {
         const rev = def.rev
         // If we're provided options, we can make the j2d URL more specific.

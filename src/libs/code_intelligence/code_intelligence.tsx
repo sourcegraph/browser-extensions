@@ -32,6 +32,16 @@ import { findCodeViews, getContentOfCodeView } from './code_views'
 import { applyDecoration, Controllers, initializeExtensions } from './extensions'
 import { initSearch, SearchFeature } from './search'
 
+export type LineRangeGetter = (
+    codeView: HTMLElement,
+    part?: DiffPart
+) => {
+    /** The first line shown in the code view. */
+    start: number
+    /** The last line shown in the code view. */
+    end: number
+}[]
+
 /**
  * Defines a type of code view a given code host can have. It tells us how to
  * look for the code view and how to do certain things when we find it.
@@ -65,15 +75,7 @@ export interface CodeView {
     isDiff?: boolean
 
     /** Gets the 1-indexed range of the code view */
-    getLineRanges: (
-        codeView: HTMLElement,
-        part?: DiffPart
-    ) => {
-        /** The first line shown in the code view. */
-        start: number
-        /** The last line shown in the code view. */
-        end: number
-    }[]
+    getLineRanges?: LineRangeGetter
 }
 
 export type CodeViewWithOutSelector = Pick<CodeView, Exclude<keyof CodeView, 'selector'>>
@@ -105,6 +107,12 @@ export interface CodeHost {
      * the given code host.
      */
     check: () => Promise<boolean> | boolean
+
+    /**
+     * Get the element where we'll inject the hover overlay's mount. If this
+     * isn't provided, we'll add append it to the body.
+     */
+    getHoverOverlayMountParent?: MountGetter
 
     /**
      * The list of types of code views to try to annotate.
@@ -199,6 +207,7 @@ function initCodeIntelligence(
         useExtensions && codeHost.getCommandPaletteMount
             ? initializeExtensions(codeHost.getCommandPaletteMount, documents)
             : {}
+
     const simpleProviderFns = extensionsController ? createLSPFromExtensions(extensionsController) : lspViaAPIXlang
 
     /** Emits when the go to definition button was clicked */
@@ -221,7 +230,11 @@ function initCodeIntelligence(
         for (const className of classNames) {
             overlayMount.classList.add(className)
         }
-        document.body.appendChild(overlayMount)
+
+        const parent = codeHost.getHoverOverlayMountParent ? codeHost.getHoverOverlayMountParent() : document.body
+
+        parent.appendChild(overlayMount)
+
         return overlayMount
     }
 
@@ -360,7 +373,7 @@ function handleCodeHost(codeHost: CodeHost): Subscription {
                     const toURIWithPath = (ctx: AbsoluteRepoFile) =>
                         `git://${ctx.repoPath}?${ctx.commitID}#${ctx.filePath}`
 
-                    if (extensionsController) {
+                    if (extensionsController && getLineRanges) {
                         const { content, baseContent } = getContentOfCodeView(codeView, { isDiff, getLineRanges, dom })
 
                         documents = [

@@ -137,13 +137,13 @@ export const singleFileDOMFunctions: DOMFunctions = {
 
 export const searchCodeSnippetDOMFunctions: DOMFunctions = {
     getCodeElementFromTarget: getCodeCellFromTarget,
-    getCodeElementFromLineNumber: (codeView, line, part) => {
+    getCodeElementFromLineNumber: (codeView, line) => {
         const lineNumberCells = codeView.querySelectorAll('td.blob-num')
         let lineNumberCell: HTMLElement | null = null
 
         for (const cell of lineNumberCells) {
-            const a = cell.querySelector('a')!
-            if (a.href.match(new RegExp(`#L${line}$`))) {
+            const a = cell.querySelector<HTMLAnchorElement>('a')!
+            if (a && a.href.match(new RegExp(`#L${line}$`))) {
                 lineNumberCell = cell as HTMLElement
                 break
             }
@@ -164,30 +164,44 @@ export const searchCodeSnippetDOMFunctions: DOMFunctions = {
     },
 }
 
-export const getLineRanges: CodeView['getLineRanges'] = codeView => {
-    const firstLine = codeView.querySelector<HTMLTableRowElement>('tr:first-of-type td.blob-code')
-    if (!firstLine) {
-        throw new Error('Unable to determine start line of code view')
+const buildGetLineRanges = (dom: DOMFunctions): CodeView['getLineRanges'] => codeView => {
+    const ranges: { start: number; end: number }[] = []
+
+    let start: number | null = null
+    let end: number | null = null
+
+    for (const row of codeView.querySelectorAll<HTMLTableRowElement>('tr')) {
+        const isCode = !row.classList.contains('divider')
+
+        if (isCode) {
+            const target = row.querySelector<HTMLElement>('td.blob-code')!
+            const codeElement = getCodeCellFromTarget(target)!
+
+            const num = dom.getLineNumberFromCodeElement(codeElement)
+            if (start === null) {
+                start = num
+            } else {
+                end = num
+            }
+        } else if (start && end) {
+            ranges.push({ start, end })
+        }
+
+        if (!isCode) {
+            start = null
+            end = null
+        }
     }
 
-    const lastLine = codeView.querySelector<HTMLTableRowElement>('tr:last-of-type td.blob-code')
-    if (!lastLine) {
-        throw new Error('Unable to determine start line of code view')
+    if (start && end) {
+        ranges.push({ start, end })
     }
 
-    const getLineNumber = (line: HTMLElement) => {
-        const codeElement = singleFileDOMFunctions.getCodeElementFromTarget(line)!
-
-        return singleFileDOMFunctions.getLineNumberFromCodeElement(codeElement)
-    }
-
-    return [
-        {
-            start: getLineNumber(firstLine),
-            end: getLineNumber(lastLine),
-        },
-    ]
+    return ranges
 }
+
+export const getLineRanges = buildGetLineRanges(singleFileDOMFunctions)
+export const searchGetLineRanges = buildGetLineRanges(searchCodeSnippetDOMFunctions)
 
 export const getDiffLineRanges: CodeView['getLineRanges'] = (codeView, part) => {
     const ranges: { start: number; end: number }[] = []
