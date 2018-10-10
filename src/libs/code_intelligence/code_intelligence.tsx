@@ -334,10 +334,10 @@ function handleCodeHost(codeHost: CodeHost): Subscription {
     }
 
     const documentsSubject = new BehaviorSubject<TextDocumentItem[] | null>([])
-    const { hoverifier, controllers: { extensionsContextController, extensionsController } } = initCodeIntelligence(
-        codeHost,
-        documentsSubject
-    )
+    const {
+        hoverifier,
+        controllers: { extensionsContextController, extensionsController },
+    } = initCodeIntelligence(codeHost, documentsSubject)
 
     const subscriptions = new Subscription()
 
