@@ -25,6 +25,7 @@ import { lspViaAPIXlang, toTextDocumentIdentifier } from '../../shared/backend/l
 import { ButtonProps, CodeViewToolbar } from '../../shared/components/CodeViewToolbar'
 import { AbsoluteRepoFile } from '../../shared/repo'
 import { eventLogger, getModeFromPath, sourcegraphUrl, useExtensions } from '../../shared/util/context'
+import { giteaCodeHost } from '../gitea/code_intelligence'
 import { githubCodeHost } from '../github/code_intelligence'
 import { gitlabCodeHost } from '../gitlab/code_intelligence'
 import { phabricatorCodeHost } from '../phabricator/code_intelligence'
@@ -185,6 +186,9 @@ export interface FileInfo {
 
     headHasFileContents?: boolean
     baseHasFileContents?: boolean
+
+    fileContent?: string
+    baseFileContent?: string
 }
 
 /**
@@ -330,10 +334,10 @@ function handleCodeHost(codeHost: CodeHost): Subscription {
     }
 
     const documentsSubject = new BehaviorSubject<TextDocumentItem[] | null>([])
-    const {
-        hoverifier,
-        controllers: { extensionsContextController, extensionsController },
-    } = initCodeIntelligence(codeHost, documentsSubject)
+    const { hoverifier, controllers: { extensionsContextController, extensionsController } } = initCodeIntelligence(
+        codeHost,
+        documentsSubject
+    )
 
     const subscriptions = new Subscription()
 
@@ -366,7 +370,14 @@ function handleCodeHost(codeHost: CodeHost): Subscription {
                         `git://${ctx.repoPath}?${ctx.commitID}#${ctx.filePath}`
 
                     if (extensionsController) {
-                        const { content, baseContent } = getContentOfCodeView(codeView, { isDiff, getLineRanges, dom })
+                        let content = info.fileContent
+                        let baseContent = info.baseFileContent
+                        if (!content || !baseContent) {
+                            const contents = getContentOfCodeView(codeView, { isDiff, getLineRanges, dom })
+
+                            content = content || contents.content
+                            baseContent = baseContent || contents.baseContent
+                        }
 
                         documents = [
                             // All the currently open documents
@@ -490,7 +501,7 @@ async function injectCodeIntelligenceToCodeHosts(codeHosts: CodeHost[]): Promise
  * incomplete setup requests.
  */
 export async function injectCodeIntelligence(): Promise<Subscription> {
-    const codeHosts: CodeHost[] = [githubCodeHost, gitlabCodeHost, phabricatorCodeHost]
+    const codeHosts: CodeHost[] = [githubCodeHost, gitlabCodeHost, phabricatorCodeHost, giteaCodeHost]
 
     return await injectCodeIntelligenceToCodeHosts(codeHosts)
 }

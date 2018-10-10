@@ -85,6 +85,7 @@ export class CodeViewToolbar extends React.Component<CodeViewToolbarProps, CodeV
                 </ul>
                 <CodeIntelStatusIndicator
                     key="code-intel-status"
+                    className={this.props.buttonProps.className}
                     userIsSiteAdmin={currentUser ? currentUser.siteAdmin : false}
                     repoPath={this.props.repoPath}
                     commitID={this.props.commitID}

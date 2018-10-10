@@ -18,6 +18,7 @@ import { featureFlags } from '../../shared/util/featureFlags'
 
 import { injectBitbucketServer } from '../../libs/bitbucket/inject'
 import { injectCodeIntelligence } from '../../libs/code_intelligence'
+import { checkIsGitea } from '../../libs/gitea/code_intelligence'
 import { injectGitHubApplication } from '../../libs/github/inject'
 import { checkIsGitlab } from '../../libs/gitlab/code_intelligence'
 import { injectPhabricatorApplication } from '../../libs/phabricator/app'
@@ -58,6 +59,7 @@ function injectApplication(): void {
             document.querySelector('.bitbucket-header-logo') ||
             document.querySelector('.aui-header-logo.aui-header-logo-bitbucket')
         const isGitlab = checkIsGitlab()
+        const isGitea = checkIsGitea()
 
         if (!isSourcegraphServer && !document.getElementById('ext-style-sheet')) {
             if (window.safari) {
@@ -65,7 +67,7 @@ function injectApplication(): void {
                     type: 'insertCSS',
                     payload: { file: 'css/style.bundle.css', origin: window.location.origin },
                 })
-            } else if (isPhabricator || isGitHub || isGitHubEnterprise || isBitbucket || isGitlab) {
+            } else if (isPhabricator || isGitHub || isGitHubEnterprise || isBitbucket || isGitlab || isGitea) {
                 const styleSheet = document.createElement('link') as HTMLLinkElement
                 styleSheet.id = 'ext-style-sheet'
                 styleSheet.rel = 'stylesheet'
@@ -103,8 +105,8 @@ function injectApplication(): void {
             injectBitbucketServer()
         }
 
-        if (isGitHub || isPhabricator || isGitlab) {
-            if (isGitlab || (await featureFlags.isEnabled('newInject'))) {
+        if (isGitHub || isPhabricator || isGitlab || isGitea) {
+            if (isGitlab || isGitea || (await featureFlags.isEnabled('newInject'))) {
                 const subscriptions = await injectCodeIntelligence()
                 window.addEventListener('unload', () => subscriptions.unsubscribe())
             }

@@ -81,6 +81,7 @@ interface CodeIntelStatusIndicatorProps extends AbsoluteRepoFile {
     onChange?: (enabled: boolean) => void
     simpleProviderFns: SimpleProviderFns
     site?: ISite
+    className?: string
 }
 interface CodeIntelStatusIndicatorState {
     /** The language server, error, undefined while loading or null if no langserver registered. */
@@ -230,7 +231,8 @@ export class CodeIntelStatusIndicator extends React.Component<
             <div className="code-intel-status-indicator">
                 <button
                     onClick={this.toggleCodeIntelligence}
-                    className={`${buttonClass} composite-container__header-action ${this.getButtonColorCSSClass()}`}
+                    className={`${buttonClass} ${this.props.className ||
+                        ''} composite-container__header-action ${this.getButtonColorCSSClass()}`}
                 >
                     <PowerPlugIcon className="composite-container__icon icon-inline" />
                 </button>

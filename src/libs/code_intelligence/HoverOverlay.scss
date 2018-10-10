@@ -21,3 +21,13 @@
         z-index: 1000;
     }
 }
+
+.hover-overlay-mount__gitea {
+    .hover-overlay__action {
+        padding: 0.5rem;
+
+        &:hover {
+            background: #e0e1e2 none;
+        }
+    }
+}
