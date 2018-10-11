@@ -16,7 +16,7 @@ import { toPrettyBlobURL } from '@sourcegraph/codeintellify/lib/url'
 import * as React from 'react'
 import { render } from 'react-dom'
 import { animationFrameScheduler, BehaviorSubject, Observable, of, Subject, Subscription } from 'rxjs'
-import { filter, map, mergeMap, observeOn, withLatestFrom } from 'rxjs/operators'
+import { filter, map, mergeMap, observeOn, tap, withLatestFrom } from 'rxjs/operators'
 
 import { TextDocumentItem } from 'sourcegraph/module/client/types/textDocument'
 import { Disposable } from 'vscode-jsonrpc'
@@ -28,6 +28,7 @@ import { eventLogger, getModeFromPath, sourcegraphUrl, useExtensions } from '../
 import { githubCodeHost } from '../github/code_intelligence'
 import { gitlabCodeHost } from '../gitlab/code_intelligence'
 import { phabricatorCodeHost } from '../phabricator/code_intelligence'
+import { reviewBoardCodeHost } from '../review_board/code_intelligence'
 import { findCodeViews, getContentOfCodeView } from './code_views'
 import { applyDecoration, Controllers, initializeExtensions } from './extensions'
 import { initSearch, SearchFeature } from './search'
@@ -349,6 +350,9 @@ function handleCodeHost(codeHost: CodeHost): Subscription {
                 mergeMap(({ codeView, resolveFileInfo, ...rest }) =>
                     resolveFileInfo(codeView).pipe(map(info => ({ info, codeView, ...rest })))
                 ),
+                tap(a => {
+                    console.log('fileInfo resolved', a)
+                }),
                 observeOn(animationFrameScheduler)
             )
             .subscribe(
@@ -476,6 +480,7 @@ async function injectCodeIntelligenceToCodeHosts(codeHosts: CodeHost[]): Promise
         const isCodeHost = await Promise.resolve(codeHost.check())
         if (isCodeHost) {
             subscriptions.add(handleCodeHost(codeHost))
+            break
         }
     }
 
@@ -490,7 +495,7 @@ async function injectCodeIntelligenceToCodeHosts(codeHosts: CodeHost[]): Promise
  * incomplete setup requests.
  */
 export async function injectCodeIntelligence(): Promise<Subscription> {
-    const codeHosts: CodeHost[] = [githubCodeHost, gitlabCodeHost, phabricatorCodeHost]
+    const codeHosts: CodeHost[] = [githubCodeHost, gitlabCodeHost, reviewBoardCodeHost, phabricatorCodeHost]
 
     return await injectCodeIntelligenceToCodeHosts(codeHosts)
 }
