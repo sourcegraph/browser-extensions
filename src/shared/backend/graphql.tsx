@@ -2,7 +2,7 @@ import { QueryResult } from '@sourcegraph/extensions-client-common/lib/graphql'
 import { IQuery } from '@sourcegraph/extensions-client-common/lib/schema/graphqlschema'
 import { Observable, throwError } from 'rxjs'
 import { ajax } from 'rxjs/ajax'
-import { catchError, map } from 'rxjs/operators'
+import { catchError, map, switchMap } from 'rxjs/operators'
 import { GQL } from '../../types/gqlschema'
 import { DEFAULT_SOURCEGRAPH_URL, isPrivateRepository, repoUrlCache, sourcegraphUrl } from '../util/context'
 import { RequestContext } from './context'
@@ -39,44 +39,48 @@ function requestGraphQL(
     const nameMatch = request.match(/^\s*(?:query|mutation)\s+(\w+)/)
     const queryName = nameMatch ? '?' + nameMatch[1] : ''
 
-    return ajax({
-        method: 'POST',
-        url: `${url}/.api/graphql` + queryName,
-        headers: getHeaders(),
-        crossDomain: true,
-        withCredentials: true,
-        body: JSON.stringify({ query: request, variables }),
-        async: true,
-    }).pipe(
-        map(({ response }) => {
-            if (shouldResponseTriggerRetryOrError(response)) {
-                delete repoUrlCache[ctx.repoKey]
-                throw response
-            }
-            if (ctx.isRepoSpecific && response.data.repository) {
-                repoUrlCache[ctx.repoKey] = url
-            }
-            return response
-        }),
-        catchError(err => {
-            if (err.status === 401) {
-                // Ensure all urls are tried and update authError to be the last seen 401.
-                // This ensures that the correct URL is used for sign in and also that all possible
-                // urls were checked.
-                authError = createAuthRequiredError(url)
-            }
+    return getHeaders().pipe(
+        switchMap(headers =>
+            ajax({
+                method: 'POST',
+                url: `${url}/.api/graphql` + queryName,
+                headers,
+                crossDomain: true,
+                withCredentials: true,
+                body: JSON.stringify({ query: request, variables }),
+                async: true,
+            }).pipe(
+                map(({ response }) => {
+                    if (shouldResponseTriggerRetryOrError(response)) {
+                        delete repoUrlCache[ctx.repoKey]
+                        throw response
+                    }
+                    if (ctx.isRepoSpecific && response.data.repository) {
+                        repoUrlCache[ctx.repoKey] = url
+                    }
+                    return response
+                }),
+                catchError(err => {
+                    if (err.status === 401) {
+                        // Ensure all urls are tried and update authError to be the last seen 401.
+                        // This ensures that the correct URL is used for sign in and also that all possible
+                        // urls were checked.
+                        authError = createAuthRequiredError(url)
+                    }
 
-            if (!retry || url === DEFAULT_SOURCEGRAPH_URL) {
-                // If there was an auth error and we tried all of the possible URLs throw the auth error.
-                if (authError) {
-                    throw authError
-                }
-                delete repoUrlCache[ctx.repoKey]
-                // We just tried the last url
-                throw err
-            }
-            return requestGraphQL(ctx, request, variables, DEFAULT_SOURCEGRAPH_URL, retry, authError)
-        })
+                    if (!retry || url === DEFAULT_SOURCEGRAPH_URL) {
+                        // If there was an auth error and we tried all of the possible URLs throw the auth error.
+                        if (authError) {
+                            throw authError
+                        }
+                        delete repoUrlCache[ctx.repoKey]
+                        // We just tried the last url
+                        throw err
+                    }
+                    return requestGraphQL(ctx, request, variables, DEFAULT_SOURCEGRAPH_URL, retry, authError)
+                })
+            )
+        )
     )
 }
 

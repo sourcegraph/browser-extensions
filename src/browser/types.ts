@@ -24,6 +24,9 @@ export const featureFlagDefaults: FeatureFlags = {
 // missing items.
 export interface StorageItems {
     sourcegraphURL: string
+    /** The current users access token for the instance at sourcegraphURL */
+    accessToken: string
+
     gitHubEnterpriseURL: string
     phabricatorURL: string
     inlineSymbolSearchEnabled: boolean
@@ -66,6 +69,8 @@ interface ClientConfigurationDetails {
 
 export const defaultStorageItems: StorageItems = {
     sourcegraphURL: 'https://sourcegraph.com',
+    accessToken: '',
+
     serverUrls: ['https://sourcegraph.com'],
     gitHubEnterpriseURL: '',
     phabricatorURL: '',

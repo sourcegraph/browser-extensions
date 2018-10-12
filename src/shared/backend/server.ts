@@ -34,6 +34,7 @@ export const fetchCurrentUser = (): Observable<GQL.IUser | undefined> =>
         getContext({ repoKey: '' }),
         `query CurrentUser() {
             currentUser {
+                id
                 displayName
                 username
                 avatarURL
