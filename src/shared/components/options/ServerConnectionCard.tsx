@@ -14,130 +14,28 @@ import {
     ListGroupItemHeading,
     Row,
 } from 'reactstrap'
-import * as permissions from '../../../browser/permissions'
-import storage from '../../../browser/storage'
-import { StorageItems } from '../../../browser/types'
-import { GQL } from '../../../types/gqlschema'
-import { fetchSite } from '../../backend/server'
-import { DEFAULT_SOURCEGRAPH_URL, isSourcegraphDotCom, setSourcegraphUrl, sourcegraphUrl } from '../../util/context'
+import { DEFAULT_SOURCEGRAPH_URL, isSourcegraphDotCom } from '../../util/context'
 
-interface Props {
-    currentUser: GQL.IUser | undefined
-    storage: StorageItems
-    permissionOrigins: string[]
-}
-
-interface State {
-    site?: GQL.ISite
-    isUpdatingURL: boolean
-    sourcegraphUrl: string
+export interface Props {
+    userIsAdmin: boolean
+    isConnected: boolean
+    hasCodeIntelligence: boolean
     error: boolean
+
+    sourcegraphUrl: string
+
+    permissionOrigins: string[]
+    contentScriptUrls: string[]
+
+    onUrlChange: (event: React.ChangeEvent<HTMLInputElement>) => void
+    onSave: () => void
+    onCancelClick: () => void
+    onCheckConnectionClick: () => void
+    onGrantPermissionsClick: () => void
 }
 
-export class ConnectionCard extends React.Component<Props, State> {
-    private urlInput: HTMLInputElement | null
-    private contentScriptUrls: string[]
-
-    constructor(props: Props) {
-        super(props)
-        this.state = {
-            sourcegraphUrl,
-            isUpdatingURL: false,
-            error: false,
-        }
-    }
-
-    private setContentScriptUrls(props: Props): void {
-        this.contentScriptUrls = [...props.storage.clientConfiguration.contentScriptUrls, props.storage.sourcegraphURL]
-    }
-
-    public componentDidMount(): void {
-        this.setContentScriptUrls(this.props)
-        this.checkConnection()
-    }
-
-    public componentWillReceiveProps(nextProps: Props): void {
-        this.setContentScriptUrls(nextProps)
-    }
-
-    private serverStatusText = (): JSX.Element => {
-        const { site } = this.state
-        if (!site) {
-            return <Badge color="danger">Unable to Connect</Badge>
-        }
-        if (isSourcegraphDotCom()) {
-            return <Badge color="warning">Limited Functionality</Badge>
-        }
-        return <Badge color="success">Connected</Badge>
-    }
-
-    private requestPermissions = (): void => {
-        permissions.request(this.contentScriptUrls).then(
-            () => {
-                /** noop */
-            },
-            () => {
-                /** noop */
-            }
-        )
-    }
-
-    private cancelButtonClicked = (): void => {
-        this.setState(() => ({ isUpdatingURL: false }))
-        if (!this.urlInput) {
-            return
-        }
-        this.setState({ sourcegraphUrl })
-        this.urlInput.blur()
-    }
-
-    private updateRef = (ref: HTMLInputElement | null): void => {
-        this.urlInput = ref
-    }
-
-    private onFormSubmit = (event: React.FormEvent<HTMLElement>): void => {
-        event.preventDefault()
-
-        this.saveNewUrl()
-    }
-
-    private saveNewUrl(): void {
-        try {
-            // If there is no url in the input use https://sourcegraph.com.
-            const url = new URL(this.state.sourcegraphUrl || DEFAULT_SOURCEGRAPH_URL)
-            // (TODO): Remove serverUrl setting after release.
-            storage.setSync({ sourcegraphURL: url.origin, serverUrls: [url.origin] })
-            setSourcegraphUrl(url.origin)
-            this.checkConnection()
-            this.setState({ sourcegraphUrl: url.origin, isUpdatingURL: false, error: false })
-        } catch {
-            this.handleInvalidUrl()
-        }
-    }
-
-    private handleInvalidUrl = (): void => {
-        this.setState(
-            () => ({ error: true }),
-            () => {
-                setTimeout(() => this.setState({ error: false }), 2000)
-            }
-        )
-    }
-
-    private handleURLChanged = (e: React.ChangeEvent<HTMLInputElement>): void => {
-        this.setState({ sourcegraphUrl: e.target.value })
-    }
-
-    private checkConnection = (): void => {
-        fetchSite().subscribe(
-            site => {
-                this.setState(() => ({ site }))
-            },
-            () => {
-                this.setState(() => ({ site: undefined }))
-            }
-        )
-    }
+export class ServerConnectionCard extends React.Component<Props> {
+    private input: HTMLInputElement | null = null
 
     public render(): JSX.Element | null {
         return (
@@ -148,45 +46,45 @@ export class ConnectionCard extends React.Component<Props, State> {
                         <CardBody>
                             <Col className="px-0">
                                 <ListGroupItemHeading>Server Connection</ListGroupItemHeading>
-                                <form onSubmit={this.onFormSubmit}>
+                                <form onSubmit={this.handleFormSubmit}>
                                     <FormGroup>
                                         <InputGroup>
                                             <Input
-                                                invalid={!!this.state.error}
+                                                invalid={!!this.props.error}
                                                 type="url"
                                                 required={true}
                                                 innerRef={this.updateRef}
-                                                defaultValue={sourcegraphUrl}
-                                                onChange={this.handleURLChanged}
+                                                defaultValue={this.props.sourcegraphUrl}
+                                                onChange={this.props.onUrlChange}
                                             />
                                             <div>
                                                 <Button
                                                     color="primary"
                                                     className="btn btn-primary"
                                                     type="submit"
-                                                    disabled={this.state.sourcegraphUrl !== sourcegraphUrl}
+                                                    disabled={this.props.sourcegraphUrl !== this.props.sourcegraphUrl}
                                                 >
                                                     Save
                                                 </Button>
                                                 <Button
-                                                    onClick={this.cancelButtonClicked}
+                                                    onClick={this.handleCancelClick}
                                                     color="secondary"
                                                     className="btn btn-secondary"
-                                                    disabled={this.state.sourcegraphUrl !== sourcegraphUrl}
+                                                    disabled={this.props.sourcegraphUrl !== this.props.sourcegraphUrl}
                                                 >
                                                     Cancel
                                                 </Button>
                                             </div>
                                         </InputGroup>
-                                        {this.state.error && (
+                                        {this.props.error && (
                                             <FormText color="muted">Please enter a valid URL.</FormText>
                                         )}
                                     </FormGroup>
                                 </form>
                                 <ListGroupItemHeading className="pt-3">
-                                    Status: {this.serverStatusText()}
+                                    Status: <Badge color={this.getStatusState()}>{this.getStatusText()}</Badge>
                                     <Button
-                                        onClick={this.checkConnection}
+                                        onClick={this.props.onCheckConnectionClick}
                                         size="sm"
                                         color="secondary"
                                         className="float-right"
@@ -194,7 +92,7 @@ export class ConnectionCard extends React.Component<Props, State> {
                                         Check Connection
                                     </Button>
                                 </ListGroupItemHeading>
-                                {this.sourcegraphServerAlert()}
+                                {this.renderSourcegraphServerAlert()}
                             </Col>
                         </CardBody>
                     </Card>
@@ -203,9 +101,51 @@ export class ConnectionCard extends React.Component<Props, State> {
         )
     }
 
-    private sourcegraphServerAlert = (): JSX.Element => {
+    private updateRef = (ref: HTMLInputElement | null): void => {
+        this.input = ref
+    }
+
+    private handleFormSubmit = (event: React.FormEvent<HTMLElement>) => {
+        event.preventDefault()
+
+        this.props.onSave()
+    }
+
+    private handleCancelClick = () => {
+        if (this.input) {
+            this.input.blur()
+        }
+
+        this.props.onCancelClick()
+    }
+
+    private getStatusText = (): string => {
+        if (isSourcegraphDotCom(this.props.sourcegraphUrl)) {
+            return 'Limited Functionality'
+        }
+
+        if (this.props.isConnected) {
+            return 'Connected'
+        }
+
+        return 'Unable to Connect'
+    }
+
+    private getStatusState = (): string => {
+        if (isSourcegraphDotCom(this.props.sourcegraphUrl)) {
+            return 'warning'
+        }
+
+        if (this.props.isConnected) {
+            return 'success'
+        }
+
+        return 'error'
+    }
+
+    private renderSourcegraphServerAlert = (): JSX.Element => {
         const { permissionOrigins } = this.props
-        if (isSourcegraphDotCom()) {
+        if (this.props.sourcegraphUrl === DEFAULT_SOURCEGRAPH_URL) {
             return (
                 <div className="pt-2">
                     <Alert color="warning">Add a Server URL to enable support on private code.</Alert>
@@ -213,8 +153,7 @@ export class ConnectionCard extends React.Component<Props, State> {
             )
         }
 
-        const { site } = this.state
-        if (!site) {
+        if (!this.props.isConnected) {
             return (
                 <div className="pt-2">
                     <Alert color="danger">
@@ -223,9 +162,10 @@ export class ConnectionCard extends React.Component<Props, State> {
                 </div>
             )
         }
+
         const forbiddenUrls = permissionOrigins.includes('<all_urls>')
             ? []
-            : this.contentScriptUrls.filter(url => !permissionOrigins.includes(`${url}/*`))
+            : this.props.contentScriptUrls.filter(url => !permissionOrigins.includes(`${url}/*`))
         if (forbiddenUrls.length !== 0) {
             return (
                 <div className="pt-2">
@@ -233,7 +173,7 @@ export class ConnectionCard extends React.Component<Props, State> {
                         {`Missing content script permissions: ${forbiddenUrls.join(', ')}.`}
                         <div className="pt-2">
                             <Button
-                                onClick={this.requestPermissions}
+                                onClick={this.props.onGrantPermissionsClick}
                                 color="primary"
                                 className="btn btn-secondary btn-sm"
                                 size="sm"
@@ -246,21 +186,20 @@ export class ConnectionCard extends React.Component<Props, State> {
             )
         }
 
-        if (!site.hasCodeIntelligence) {
-            const isSiteAdmin = this.props.currentUser && this.props.currentUser.siteAdmin
+        if (!this.props.hasCodeIntelligence) {
             return (
                 <div className="pt-2">
                     <Alert color="info">
-                        {!isSiteAdmin &&
+                        {!this.props.userIsAdmin &&
                             `Code intelligence is not enabled. Contact your site admin to enable language servers. Code
                         intelligence is available for open source repositories.`}
-                        {isSiteAdmin && (
+                        {this.props.userIsAdmin && (
                             <div>
                                 Code intelligence is disabled. Enable code intelligence for jump to definition, hover
                                 tooltips, and find references.
                                 <div className="pt-2">
                                     <Button
-                                        href={`${sourcegraphUrl}/site-admin/code-intelligence`}
+                                        href={`${this.props.sourcegraphUrl}/site-admin/code-intelligence`}
                                         color="primary"
                                         className="btn btn-secondary btn-sm"
                                         size="sm"
@@ -280,7 +219,12 @@ export class ConnectionCard extends React.Component<Props, State> {
                 <Alert color="success">
                     You are connected to your server and code intelligence is fully functional.
                     <div className="pt-2">
-                        <Button href={sourcegraphUrl} color="primary" className="btn btn-secondary btn-sm" size="sm">
+                        <Button
+                            href={this.props.sourcegraphUrl}
+                            color="primary"
+                            className="btn btn-secondary btn-sm"
+                            size="sm"
+                        >
                             Open Sourcegraph
                         </Button>
                     </div>

@@ -1,10 +1,14 @@
+import { isDefined } from '@sourcegraph/codeintellify/lib/helpers'
 import * as React from 'react'
 import { RouteComponentProps } from 'react-router'
-import { Subscription } from 'rxjs'
+import { of, Subscription } from 'rxjs'
+import { filter, map, share, switchMap } from 'rxjs/operators'
 import * as permissions from '../../../browser/permissions'
 import storage from '../../../browser/storage'
 import { StorageItems } from '../../../browser/types'
 import { GQL } from '../../../types/gqlschema'
+import { getAccessToken, setAccessToken } from '../../auth/access_token'
+import { createAccessToken } from '../../backend/auth'
 import { fetchCurrentUser } from '../../backend/server'
 import { ConnectionCard } from './ConnectionCard'
 import { FeatureFlagCard } from './FeatureFlagCard'
@@ -14,6 +18,7 @@ interface State {
     currentUser: GQL.IUser | undefined
     storage: StorageItems | undefined
     permissionOrigins: string[]
+    token?: string
 }
 
 /**
@@ -32,9 +37,30 @@ export class OptionsConfiguration extends React.Component<Props, State> {
     }
 
     public componentDidMount(): void {
-        fetchCurrentUser().subscribe(user => {
-            this.setState(() => ({ currentUser: user }))
-        })
+        const fetchingUser = fetchCurrentUser().pipe(share())
+
+        this.subscriptions.add(
+            fetchingUser.subscribe(user => {
+                this.setState(() => ({ currentUser: user }))
+            })
+        )
+
+        this.subscriptions.add(
+            fetchingUser
+                .pipe(
+                    filter(isDefined),
+                    switchMap(user => getAccessToken().pipe(map(token => ({ token, user })))),
+                    switchMap(({ user, token }) => {
+                        if (token) {
+                            return of(token)
+                        }
+
+                        return createAccessToken(user.id).pipe(setAccessToken())
+                    })
+                )
+                .subscribe(token => this.setState({ token }))
+        )
+
         storage.onChanged(() => {
             this.updateForStorageItems()
         })
