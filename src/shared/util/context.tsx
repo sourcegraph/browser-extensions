@@ -1,7 +1,7 @@
 import * as path from 'path'
 import * as runtime from '../../browser/runtime'
 import storage from '../../browser/storage'
-import { isPhabricator } from '../context'
+import { isPhabricator } from '../../context'
 import { EventLogger } from '../tracking/EventLogger'
 
 export const DEFAULT_SOURCEGRAPH_URL = 'https://sourcegraph.com'
