@@ -86,6 +86,7 @@ $theme-colors-light: (
 @import './shared/components/symbols';
 @import './shared/components/codeIntelStatusIndicator';
 @import './shared/components/CodeViewToolbar.scss';
+@import './shared/components/JSONEditor';
 @import '@sourcegraph/codeintellify/lib/HoverOverlay.scss';
 @import './libs/code_intelligence/HoverOverlay.scss';
 @import '@sourcegraph/react-loading-spinner/lib/LoadingSpinner.css';

@@ -26,11 +26,9 @@ export const repoUrlCache: UrlCache = {}
 if (window.SG_ENV === 'EXTENSION') {
     storage.getSync(items => {
         sourcegraphUrl = items.sourcegraphURL
-
-        renderMermaidGraphsEnabled = items.renderMermaidGraphsEnabled
-
-        inlineSymbolSearchEnabled = items.inlineSymbolSearchEnabled
-        useExtensions = items.useExtensions
+        renderMermaidGraphsEnabled = items.featureFlags.renderMermaidGraphsEnabled
+        inlineSymbolSearchEnabled = items.featureFlags.inlineSymbolSearchEnabled
+        useExtensions = items.featureFlags.useExtensions
     })
 }
 

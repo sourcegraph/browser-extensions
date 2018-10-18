@@ -5,7 +5,7 @@ import '../../config/polyfill'
 import * as React from 'react'
 import { render } from 'react-dom'
 import storage from '../../browser/storage'
-import { OptionsDashboard } from '../../shared/components/options/OptionsDashboard'
+import { OptionsContainer } from '../../libs/options/OptionsContainer'
 import { assertEnv } from '../envAssertion'
 
 assertEnv('OPTIONS')
@@ -17,7 +17,7 @@ const inject = () => {
     document.body.appendChild(injectDOM)
 
     storage.getSync(items => {
-        render(<OptionsDashboard />, injectDOM)
+        render(<OptionsContainer />, injectDOM)
     })
 }
 
