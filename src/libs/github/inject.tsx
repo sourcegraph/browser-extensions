@@ -59,7 +59,6 @@ import {
     renderMermaidGraphsEnabled,
     repositoryFileTreeEnabled,
     sourcegraphUrl,
-    useExtensions,
 } from '../../shared/util/context'
 import { featureFlags } from '../../shared/util/featureFlags'
 import { diffDomFunctions, searchCodeSnippetDOMFunctions, singleFileDOMFunctions } from './dom_functions'
@@ -123,7 +122,7 @@ function injectCodeIntelligence(): void {
     let extensionsController: ClientController<ConfigurationSubject, Settings> | undefined
     let simpleProviderFns = lspViaAPIXlang
 
-    if (isSingleCodeFile && useExtensions && filePath) {
+    if (isSingleCodeFile && filePath) {
         extensionsContextController = createExtensionsContextController(sourcegraphUrl)
         extensionsController = createController(extensionsContextController.context, createMessageTransports)
         simpleProviderFns = createLSPFromExtensions(extensionsController!)

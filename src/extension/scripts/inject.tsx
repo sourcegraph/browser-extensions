@@ -12,7 +12,6 @@ import {
     setRenderMermaidGraphsEnabled,
     setRepositoryFileTreeEnabled,
     setSourcegraphUrl,
-    setUseExtensions,
 } from '../../shared/util/context'
 import { featureFlags } from '../../shared/util/featureFlags'
 
@@ -109,8 +108,6 @@ function injectApplication(): void {
                 window.addEventListener('unload', () => subscriptions.unsubscribe())
             }
         }
-
-        setUseExtensions(items.useExtensions === undefined ? false : items.useExtensions)
     }
 
     storage.getSync(handleGetStorage)

@@ -2,7 +2,6 @@ import * as React from 'react'
 import { Card, CardBody, CardHeader, Col, Form, FormGroup, Input, Label, Row } from 'reactstrap'
 import storage from '../../../browser/storage'
 import { StorageItems } from '../../../browser/types'
-import { sourcegraphUrl } from '../../util/context'
 
 interface Props {
     storage: StorageItems
@@ -26,17 +25,12 @@ export class FeatureFlagCard extends React.Component<Props, {}> {
         storage.setSync({ inlineSymbolSearchEnabled: !this.props.storage.inlineSymbolSearchEnabled })
     }
 
-    private onUseExtensionsToggled = () => {
-        storage.setSync({ useExtensions: !this.props.storage.useExtensions })
-    }
-
     public render(): JSX.Element | null {
         const {
             inlineSymbolSearchEnabled,
             renderMermaidGraphsEnabled,
             repositoryFileTreeEnabled,
             executeSearchEnabled,
-            useExtensions,
         } = this.props.storage
         return (
             <Row className="pb-3">
@@ -87,25 +81,6 @@ export class FeatureFlagCard extends React.Component<Props, {}> {
                                             </a>{' '}
                                             diagrams on GitHub markdown files
                                         </div>
-                                    </Label>
-                                </FormGroup>
-                                <FormGroup check={true}>
-                                    <Label check={true}>
-                                        <Input
-                                            onClick={this.onUseExtensionsToggled}
-                                            defaultChecked={useExtensions}
-                                            type="checkbox"
-                                        />{' '}
-                                        Use Sourcegraph extensions
-                                        {useExtensions && (
-                                            <>
-                                                {' '}
-                                                and{' '}
-                                                <a href={sourcegraphUrl + '/extensions'} target="_blank">
-                                                    enable extensions on the registry
-                                                </a>
-                                            </>
-                                        )}
                                     </Label>
                                 </FormGroup>
                                 <FormGroup check={true}>

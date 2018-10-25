@@ -19,8 +19,6 @@ export let repositoryFileTreeEnabled = false
 
 export let inlineSymbolSearchEnabled = false
 
-export let useExtensions = false
-
 interface UrlCache {
     [key: string]: string
 }
@@ -38,7 +36,6 @@ if (window.SG_ENV === 'EXTENSION') {
         repositoryFileTreeEnabled = items.repositoryFileTreeEnabled
 
         inlineSymbolSearchEnabled = items.inlineSymbolSearchEnabled
-        useExtensions = items.useExtensions
     })
 }
 
@@ -76,10 +73,6 @@ export function setRepositoryFileTreeEnabled(enabled: boolean): void {
 
 export function setInlineSymbolSearchEnabled(enabled: boolean): void {
     inlineSymbolSearchEnabled = enabled
-}
-
-export function setUseExtensions(value: boolean): void {
-    useExtensions = value
 }
 
 /**

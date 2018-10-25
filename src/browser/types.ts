@@ -59,10 +59,6 @@ export interface StorageItems {
     sourcegraphAnonymousUid: string
     disableExtension: boolean
     /**
-     * Enable the use of Sourcegraph extensions.
-     */
-    useExtensions: boolean
-    /**
      * Storage for feature flags
      */
     featureFlags: FeatureFlags
@@ -98,7 +94,6 @@ export const defaultStorageItems: StorageItems = {
     openFileOnSourcegraph: true,
     sourcegraphAnonymousUid: '',
     disableExtension: false,
-    useExtensions: false,
     featureFlags: featureFlagDefaults,
     clientConfiguration: {
         contentScriptUrls: [],

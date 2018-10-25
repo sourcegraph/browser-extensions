@@ -24,7 +24,7 @@ import { createJumpURLFetcher, createLSPFromExtensions, JumpURLLocation } from '
 import { lspViaAPIXlang, toTextDocumentIdentifier } from '../../shared/backend/lsp'
 import { ButtonProps, CodeViewToolbar } from '../../shared/components/CodeViewToolbar'
 import { AbsoluteRepoFile } from '../../shared/repo'
-import { eventLogger, getModeFromPath, sourcegraphUrl, useExtensions } from '../../shared/util/context'
+import { eventLogger, getModeFromPath, sourcegraphUrl } from '../../shared/util/context'
 import { githubCodeHost } from '../github/code_intelligence'
 import { gitlabCodeHost } from '../gitlab/code_intelligence'
 import { phabricatorCodeHost } from '../phabricator/code_intelligence'
@@ -200,10 +200,9 @@ function initCodeIntelligence(
     hoverifier: Hoverifier
     controllers: Partial<Controllers>
 } {
-    const { extensionsContextController, extensionsController }: Partial<Controllers> =
-        useExtensions && codeHost.getCommandPaletteMount
-            ? initializeExtensions(codeHost.getCommandPaletteMount, documents)
-            : {}
+    const { extensionsContextController, extensionsController }: Partial<Controllers> = codeHost.getCommandPaletteMount
+        ? initializeExtensions(codeHost.getCommandPaletteMount, documents)
+        : {}
     const simpleProviderFns = extensionsController ? createLSPFromExtensions(extensionsController) : lspViaAPIXlang
 
     /** Emits when the go to definition button was clicked */
