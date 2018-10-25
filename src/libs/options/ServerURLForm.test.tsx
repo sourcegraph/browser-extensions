@@ -1,172 +1,158 @@
-import * as chai from 'chai'
+import { assert, expect } from 'chai'
 import { describe, it } from 'mocha'
 import * as React from 'react'
 import { cleanup, fireEvent, render } from 'react-testing-library'
-import { TestScheduler } from 'rxjs/testing'
-
 import { EMPTY, merge, of, Subject } from 'rxjs'
-import { map, switchMap, switchMapTo, tap } from 'rxjs/operators'
-import { ServerURLForm } from './ServerURLForm'
+import { switchMap, tap } from 'rxjs/operators'
+import { TestScheduler } from 'rxjs/testing'
+import * as sinon from 'sinon'
+
+import { ServerURLForm, ServerURLFormProps } from './ServerURLForm'
+
+const noop = () => {
+    /* noop */
+}
 
 describe('ServerURLForm', () => {
     after(cleanup)
 
-    it('the onChange prop handler gets fired', () => {
-        const scheduler = new TestScheduler((a, b) => chai.assert.deepEqual(a, b))
+    it('fires the onChange prop handler', () => {
+        const onChange = sinon.spy()
+        const onSubmit = sinon.spy()
+
+        const { container } = render(
+            <ServerURLForm
+                value={'https://sourcegraph.com'}
+                status={'connected'}
+                onChange={onChange}
+                onSubmit={onSubmit}
+            />
+        )
+
+        const urlInput = container.querySelector('input')!
+
+        fireEvent.change(urlInput, { target: { value: 'https://different.com' } })
+
+        assert.isTrue(onChange.calledOnce)
+        assert.isTrue(onChange.calledWith('https://different.com'))
+
+        assert.isTrue(onSubmit.notCalled)
+    })
+
+    it('updates the input value when the url changes', () => {
+        const props: ServerURLFormProps = {
+            value: 'https://sourcegraph.com',
+            status: 'connected',
+            onChange: noop,
+            onSubmit: noop,
+        }
+
+        const { container, rerender } = render(<ServerURLForm {...props} />)
+
+        const urlInput = container.querySelector('input')!
+
+        rerender(<ServerURLForm {...props} value={'https://different.com'} />)
+
+        const newValue = urlInput.value
+
+        expect(newValue).to.equal('https://different.com')
+    })
+
+    it('fires the onSubmit prop handler when the form is submitted', () => {
+        const onSubmit = sinon.spy()
+
+        const { container } = render(
+            <ServerURLForm value={'https://sourcegraph.com'} status={'connected'} onChange={noop} onSubmit={onSubmit} />
+        )
+
+        const form = container.querySelector('form')!
+
+        fireEvent.submit(form)
+
+        assert.isTrue(onSubmit.calledOnce)
+    })
+
+    it('fires the onSubmit prop handler after 5s on inactivity after a change', () => {
+        const scheduler = new TestScheduler((a, b) => assert.deepEqual(a, b))
 
         scheduler.run(({ cold, expectObservable }) => {
+            const submits = new Subject<void>()
+            const nextSubmit = () => submits.next()
+
+            const { container } = render(
+                <ServerURLForm
+                    value={'https://sourcegraph.com'}
+                    status={'connected'}
+                    onChange={noop}
+                    onSubmit={nextSubmit}
+                />
+            )
+
+            const form = container.querySelector('input')!
+
             const urls: { [key: string]: string } = {
                 a: 'https://different.com',
             }
 
-            const urlChanges = cold('a', urls).pipe(
-                map(url => {
-                    const changes = new Subject<string>()
-                    const nextChange = (value: string) => changes.next(value)
-
-                    const submits = new Subject<void>()
-                    const nextSubmit = () => submits.next()
-
-                    const { container } = render(
-                        <ServerURLForm
-                            value={'https://sourcegraph.com'}
-                            status={'connected'}
-                            onChange={nextChange}
-                            onSubmit={nextSubmit}
-                        />
-                    )
-
-                    const urlInput = container.querySelector('input')!
-
-                    return { changes, submits, url, urlInput }
-                }),
-                switchMap(({ changes, url, urlInput }) => {
+            const submitObs = cold('a', urls).pipe(
+                switchMap(url => {
                     const emit = of(undefined).pipe(
                         tap(() => {
-                            fireEvent.change(urlInput, { target: { value: url } })
+                            fireEvent.change(form, { target: { value: url } })
                         }),
                         switchMap(() => EMPTY)
                     )
 
-                    return merge(changes, emit)
+                    return merge(submits, emit)
                 })
             )
 
-            const values: { [key: string]: string } = {
-                a: 'https://different.com',
-            }
-
-            expectObservable(urlChanges).toBe('a', values)
+            expectObservable(submitObs).toBe('5s a', { a: undefined })
         })
     })
 
-    it('captures the form submit event', () => {
-        const scheduler = new TestScheduler((a, b) => chai.assert.deepEqual(a, b))
+    it("doesn't submit after 5 seconds if the form was submitted manually", () => {
+        const scheduler = new TestScheduler((a, b) => assert.deepEqual(a, b))
 
         scheduler.run(({ cold, expectObservable }) => {
+            const changes = new Subject<string>()
+            const nextChange = () => changes.next()
+
+            const submits = new Subject<void>()
+            const nextSubmit = () => submits.next()
+
+            const props: ServerURLFormProps = {
+                value: 'https://sourcegraph.com',
+                status: 'connected',
+                onChange: nextChange,
+                onSubmit: nextSubmit,
+            }
+
+            const { container } = render(<ServerURLForm {...props} />)
+            const form = container.querySelector('input')!
+
+            changes.subscribe(url => {
+                fireEvent.submit(form)
+            })
+
             const urls: { [key: string]: string } = {
                 a: 'https://different.com',
             }
 
-            const urlChanges = cold('a', urls).pipe(
-                map(url => {
-                    const changes = new Subject<string>()
-                    const nextChange = (value: string) => changes.next(value)
-
-                    const submits = new Subject<void>()
-                    const nextSubmit = () => submits.next()
-
-                    const { container } = render(
-                        <ServerURLForm
-                            value={'https://sourcegraph.com'}
-                            status={'connected'}
-                            onChange={nextChange}
-                            onSubmit={nextSubmit}
-                        />
-                    )
-
-                    const urlInput = container.querySelector('input')!
-
-                    return { changes, submits, url, urlInput }
-                }),
-                switchMap(({ changes, url, urlInput }) => {
+            const submitObs = cold('a', urls).pipe(
+                switchMap(url => {
                     const emit = of(undefined).pipe(
                         tap(() => {
-                            fireEvent.change(urlInput, { target: { value: url } })
+                            fireEvent.change(form, { target: { value: url } })
                         }),
                         switchMap(() => EMPTY)
                     )
 
-                    return merge(changes, emit)
+                    return merge(submits, emit)
                 })
             )
 
-            const values: { [key: string]: string } = {
-                a: 'https://different.com',
-            }
-
-            expectObservable(urlChanges).toBe('a', values)
+            expectObservable(submitObs).toBe('a', { a: undefined })
         })
     })
-
-    // it('submits after 5 seconds of inactivity after a change', () => {
-    //     const scheduler = new TestScheduler((a, b) => chai.assert.deepEqual(a, b))
-
-    //     scheduler.run(({ cold, expectObservable }) => {
-    //         const urls: { [key: string]: string } = {
-    //             a: 'https://different.com',
-    //         }
-
-    //         const inject = (nextChange: (value: string) => void, nextSubmit: () => void) => {
-    //             const { container, rerender } = render(
-    //                 <ServerURLForm
-    //                     value={'https://sourcegraph.com'}
-    //                     status={'connected'}
-    //                     onChange={nextChange}
-    //                     onSubmit={nextSubmit}
-    //                 />
-    //             )
-
-    //             const rr = (value: string) =>
-    //                 rerender(
-    //                     <ServerURLForm value={value} status={'connected'} onChange={nextChange} onSubmit={nextSubmit} />
-    //                 )
-
-    //             return { rerender: rr, input: container.querySelector('input')! }
-    //         }
-
-    //         const submits = cold('a', urls).pipe(
-    //             map(url => {
-    //                 const changes = new Subject<string>()
-    //                 const nextChange = (value: string) => changes.next(value)
-
-    //                 const submits = new Subject<void>()
-    //                 const nextSubmit = () => submits.next()
-
-    //                 const { input, rerender } = inject(nextChange, nextSubmit)
-
-    //                 return { changes, submits, url, input, rerender }
-    //             }),
-    //             switchMap(({ changes, submits, url, input, rerender }) => {
-    //                 // const emit = of(undefined).pipe(
-    //                 //     tap(() => {
-    //                 //         fireEvent.change(input, { target: { value: url } })
-    //                 //     }),
-    //                 //     switchMap(() => EMPTY)
-    //                 // )
-
-    //                 const rerenders = changes.pipe(
-    //                     tap(value => {
-    //                         rerender(value)
-    //                     }),
-    //                     switchMapTo(EMPTY)
-    //                 )
-
-    //                 return merge(submits, rerenders)
-    //             })
-    //         )
-
-    //         expectObservable(submits).toBe('5s a')
-    //     })
-    // })
 })

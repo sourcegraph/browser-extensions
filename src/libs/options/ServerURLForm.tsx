@@ -1,7 +1,7 @@
 import { upperFirst } from 'lodash'
 import * as React from 'react'
-import { merge, Observable, Subject, Subscription } from 'rxjs'
-import { debounceTime, distinctUntilChanged, map, skip, withLatestFrom } from 'rxjs/operators'
+import { merge, Subject, Subscription } from 'rxjs'
+import { debounceTime, takeUntil } from 'rxjs/operators'
 
 export enum ConnectionErrors {
     AuthError,
@@ -50,121 +50,36 @@ interface State {
 export class ServerURLForm extends React.Component<ServerURLFormProps> {
     public state: State = { isUpdating: false }
 
-    private componentUpdates = new Subject<ServerURLFormProps>()
-
     private inputElement = React.createRef<HTMLInputElement>()
 
-    private inputFocuses = new Subject<void>()
-    private nextInputFocus = () => this.inputFocuses.next()
-
-    private formSubmits = new Subject<void>()
+    private componentUpdates = new Subject<State>()
+    private changes = new Subject<string>()
+    private submits = new Subject<void>()
 
     private subscriptions = new Subscription()
-
-    // constructor(props: ServerURLFormProps) {
-    //     super(props)
-
-    //     const propsWhenEventOccured: Observable<ServerURLFormProps> = this.inputFocuses.pipe(
-    //         withLatestFrom(this.componentUpdates),
-    //         map(([, props]) => props)
-    //     )
-
-    //     const propsWhenFormSubmitted = this.formSubmissions.pipe(
-    //         withLatestFrom(this.componentUpdates),
-    //         map(([, props]) => props)
-    //     )
-
-    //     const newProps = this.componentUpdates.pipe(
-    //         distinctUntilChanged((x, y) => x.value === y.value),
-    //         // Skip the first input from `componentDidMount()`
-    //         skip(1)
-    //     )
-
-    //     const propsWhenBeganUpdating = merge(newProps, propsWhenEventOccured)
-
-    //     this.subscriptions.add(
-    //         propsWhenBeganUpdating.subscribe(() => {
-    //             this.setState({ isUpdating: true, error: undefined })
-    //         })
-    //     )
-
-    //     const submitAfterInactivity = propsWhenBeganUpdating.pipe(debounceTime(5000))
-
-    //     this.subscriptions.add(
-    //         merge(propsWhenFormSubmitted, submitAfterInactivity)
-    //             .pipe(
-    //                 map(({ value }) => value),
-    //                 // Prevent double submission when user presses enter.
-    //                 distinctUntilChanged()
-    //             )
-    //             .subscribe(() => {
-    //                 console.log('sobmit')
-    //                 this.props.onSubmit()
-
-    //                 if (this.inputElement.current) {
-    //                     this.inputElement.current.blur()
-    //                 }
-
-    //                 this.setState({ isUpdating: false })
-    //             })
-    //     )
-    // }
 
     constructor(props: ServerURLFormProps) {
         super(props)
 
-        const propsWhenEventOccured: Observable<ServerURLFormProps> = this.inputFocuses.pipe(
-            withLatestFrom(this.componentUpdates),
-            map(([, props]) => props)
-        )
-
-        const propsWhenFormSubmitted = this.formSubmits.pipe(
-            withLatestFrom(this.componentUpdates),
-            map(([, props]) => props)
-        )
-
-        const newProps = this.componentUpdates.pipe(
-            distinctUntilChanged((x, y) => x.value === y.value),
-            // Skip the first input from `componentDidMount()`
-            skip(1)
-        )
-
-        const propsWhenBeganUpdating = merge(newProps, propsWhenEventOccured)
-
         this.subscriptions.add(
-            propsWhenBeganUpdating.subscribe(() => {
-                this.setState({ isUpdating: true, error: undefined })
+            this.changes.subscribe(value => {
+                this.props.onChange(value)
+                this.setState({ isUpdating: true })
             })
         )
 
-        const submitAfterInactivity = propsWhenBeganUpdating.pipe(debounceTime(5000))
+        const submitAfterInactivity = this.changes.pipe(debounceTime(5000), takeUntil(this.submits))
 
         this.subscriptions.add(
-            merge(propsWhenFormSubmitted, submitAfterInactivity)
-                .pipe(
-                    map(({ value }) => value),
-                    // Prevent double submission when user presses enter.
-                    distinctUntilChanged()
-                )
-                .subscribe(() => {
-                    this.props.onSubmit()
-
-                    if (this.inputElement.current) {
-                        this.inputElement.current.blur()
-                    }
-
-                    this.setState({ isUpdating: false })
-                })
+            merge(this.submits, submitAfterInactivity).subscribe(() => {
+                this.props.onSubmit()
+                this.setState({ isUpdating: false })
+            })
         )
     }
 
-    public componentDidMount(): void {
-        this.componentUpdates.next(this.props)
-    }
-
     public componentDidUpdate(): void {
-        console.log('did update')
-        this.componentUpdates.next(this.props)
+        this.componentUpdates.next(this.state)
     }
 
     public componentWillUnmount(): void {
@@ -194,7 +109,6 @@ export class ServerURLForm extends React.Component<ServerURLFormProps> {
                         value={this.props.value}
                         className="server-url-form__input-container__input"
                         onChange={this.handleChange}
-                        onFocus={this.nextInputFocus}
                     />
                 </div>
                 {!this.state.isUpdating &&
@@ -228,13 +142,13 @@ export class ServerURLForm extends React.Component<ServerURLFormProps> {
     }
 
     private handleChange = ({ target: { value } }: React.ChangeEvent<HTMLInputElement>) => {
-        this.props.onChange(value)
+        this.changes.next(value)
     }
 
     private handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault()
 
-        this.formSubmits.next()
+        this.submits.next()
     }
 
     private get isUpdating(): boolean {
