@@ -2,16 +2,12 @@ import { assert, expect } from 'chai'
 import { describe, it } from 'mocha'
 import * as React from 'react'
 import { cleanup, fireEvent, render } from 'react-testing-library'
-import { EMPTY, merge, of, Subject } from 'rxjs'
+import { EMPTY, merge, noop, of, Subject } from 'rxjs'
 import { switchMap, tap } from 'rxjs/operators'
 import { TestScheduler } from 'rxjs/testing'
-import * as sinon from 'sinon'
+import sinon from 'sinon'
 
 import { ServerURLForm, ServerURLFormProps } from './ServerURLForm'
-
-const noop = () => {
-    /* noop */
-}
 
 describe('ServerURLForm', () => {
     after(cleanup)

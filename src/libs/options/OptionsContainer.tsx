@@ -1,13 +1,29 @@
+import { propertyIsDefined } from '@sourcegraph/codeintellify/lib/helpers'
 import * as React from 'react'
-import { of, Subject, Subscription } from 'rxjs'
-import { catchError, map, switchMap, tap } from 'rxjs/operators'
+import { Observable, of, Subject, Subscription } from 'rxjs'
+import { catchError, filter, map, switchMap } from 'rxjs/operators'
 import { getExtensionVersionSync } from '../../browser/runtime'
-import { ERAUTHREQUIRED, isErrorLike } from '../../shared/backend/errors'
-import { fetchSite } from '../../shared/backend/server'
-import { sourcegraphUrl } from '../../shared/util/context'
+import { AccessToken, FeatureFlags } from '../../browser/types'
+import { ERAUTHREQUIRED, ErrorLike, isErrorLike } from '../../shared/backend/errors'
+import { GQL } from '../../types/gqlschema'
 import { OptionsMenu, OptionsMenuProps } from './Menu'
 import { ConnectionErrors } from './ServerURLForm'
-import { getConfigurableSettings, setConfigurabelSettings, setSourcegraphURL } from './settings'
+
+export interface OptionsContainerProps {
+    sourcegraphURL: string
+
+    fetchSite: (url: string) => Observable<void>
+    fetchCurrentUser: (useToken: boolean) => Observable<GQL.IUser | undefined>
+
+    setSourcegraphURL: (url: string) => void
+    getConfigurableSettings: () => Observable<Partial<FeatureFlags>>
+    setConfigurableSettings: (settings: Observable<Partial<FeatureFlags>>) => Observable<Partial<FeatureFlags>>
+
+    createAccessToken: (url: string) => Observable<AccessToken>
+    getAccessToken: (url: string) => Observable<AccessToken | undefined>
+    setAccessToken: (url: string) => (tokens: Observable<AccessToken>) => Observable<AccessToken>
+    fetchAccessTokenIDs: (url: string) => Observable<Pick<AccessToken, 'id'>[]>
+}
 
 interface OptionsContainerState
     extends Pick<
@@ -15,15 +31,7 @@ interface OptionsContainerState
             'isSettingsOpen' | 'status' | 'sourcegraphURL' | 'settings' | 'settingsHaveChanged' | 'connectionError'
         > {}
 
-export class OptionsContainer extends React.Component<{}, OptionsContainerState> {
-    public state: OptionsContainerState = {
-        status: 'connecting',
-        sourcegraphURL: sourcegraphUrl,
-        isSettingsOpen: false,
-        settingsHaveChanged: false,
-        settings: {},
-    }
-
+export class OptionsContainer extends React.Component<OptionsContainerProps, OptionsContainerState> {
     private version = getExtensionVersionSync()
 
     private urlUpdates = new Subject<string>()
@@ -31,57 +39,94 @@ export class OptionsContainer extends React.Component<{}, OptionsContainerState>
 
     private subscriptions = new Subscription()
 
-    constructor(props: {}) {
+    constructor(props: OptionsContainerProps) {
         super(props)
 
+        this.state = {
+            status: 'connecting',
+            sourcegraphURL: props.sourcegraphURL,
+            isSettingsOpen: false,
+            settingsHaveChanged: false,
+            settings: {},
+            connectionError: undefined,
+        }
+
+        const fetchingSite: Observable<string | ErrorLike> = this.urlUpdates.pipe(
+            switchMap(url => this.props.fetchSite(url).pipe(map(() => url))),
+            catchError(err => of(err))
+        )
+
         this.subscriptions.add(
-            this.urlUpdates
+            fetchingSite.subscribe(res => {
+                let url = ''
+
+                if (isErrorLike(res)) {
+                    this.setState({
+                        status: 'error',
+                        connectionError:
+                            res.code === ERAUTHREQUIRED ? ConnectionErrors.AuthError : ConnectionErrors.UnableToConnect,
+                    })
+                    url = this.state.sourcegraphURL
+                } else {
+                    this.setState({ status: 'connected' })
+                    url = res
+                }
+
+                props.setSourcegraphURL(url)
+            })
+        )
+
+        this.subscriptions.add(
+            // Ensure the site is valid.
+            fetchingSite
                 .pipe(
-                    tap(a => {
-                        console.log('a', a)
-                    }),
-                    switchMap(url => fetchSite(url).pipe(map(() => url))),
-                    catchError(err => of(err))
+                    filter(urlOrError => !isErrorLike(urlOrError)),
+                    map(urlOrError => urlOrError as string),
+                    // Get the access token for this server if we have it.
+                    switchMap(url => this.props.getAccessToken(url).pipe(map(token => ({ token, url })))),
+                    switchMap(({ url, token }) =>
+                        this.props.fetchCurrentUser(false).pipe(map(user => ({ user, token, url })))
+                    ),
+                    filter(propertyIsDefined('user')),
+                    // Get the IDs for all access tokens for the user.
+                    switchMap(({ token, user, url }) =>
+                        this.props
+                            .fetchAccessTokenIDs(user.id)
+                            .pipe(map(usersTokenIDs => ({ usersTokenIDs, user, token, url })))
+                    ),
+                    // Make sure the token still exists on the server. If it
+                    // does exits, use it, otherwise create a new one.
+                    switchMap(({ user, token, usersTokenIDs, url }) => {
+                        const tokenExists = token && usersTokenIDs.map(({ id }) => id).includes(token.id)
+
+                        return token && tokenExists
+                            ? of(token)
+                            : this.props.createAccessToken(user.id).pipe(this.props.setAccessToken(url))
+                    })
                 )
-                .subscribe(res => {
-                    let url = ''
-
-                    if (isErrorLike(res)) {
-                        this.setState({
-                            status: 'error',
-                            connectionError:
-                                res.code === ERAUTHREQUIRED
-                                    ? ConnectionErrors.AuthError
-                                    : ConnectionErrors.UnableToConnect,
-                        })
-                        url = this.state.sourcegraphURL
-                    } else {
-                        this.setState({ status: 'connected' })
-                        url = res
-                    }
-
-                    console.log(res, url)
-
-                    setSourcegraphURL(url)
+                .subscribe(() => {
+                    // We don't need to do anything with the token now. We just
+                    // needed to ensure we had one saved.
                 })
         )
 
         this.subscriptions.add(
-            this.settingsSaves.pipe(switchMap(settings => setConfigurabelSettings(settings))).subscribe(settings => {
-                this.setState({
-                    settings,
-                    settingsHaveChanged: false,
+            this.settingsSaves
+                .pipe(switchMap(settings => props.setConfigurableSettings(settings)))
+                .subscribe(settings => {
+                    this.setState({
+                        settings,
+                        settingsHaveChanged: false,
+                    })
                 })
-            })
         )
     }
 
     public componentDidMount(): void {
-        getConfigurableSettings().subscribe(settings => {
+        this.props.getConfigurableSettings().subscribe(settings => {
             this.setState({ settings })
         })
 
-        console.log('next url')
         this.urlUpdates.next(this.state.sourcegraphURL)
     }
 
@@ -108,7 +153,6 @@ export class OptionsContainer extends React.Component<{}, OptionsContainerState>
     }
 
     private handleURLSubmit = () => {
-        console.log('submitted', this.state.sourcegraphURL)
         this.urlUpdates.next(this.state.sourcegraphURL)
     }
 

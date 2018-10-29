@@ -162,7 +162,7 @@ permissions.onRemoved(permissions => {
     })
 })
 
-// Ensure access tokens are in storage and they are in the correct shape.
+// Ensure access tokens are in storage and they are in the correct shape.jj
 storage.addSyncMigration((items, set, remove) => {
     if (!items.accessTokens) {
         set({ accessTokens: {} })
