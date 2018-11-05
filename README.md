@@ -1,5 +1,7 @@
 # Sourcegraph browser extensions
 
+⚠️ moved to https://github.com/sourcegraph/sourcegraph/tree/master/packages/browser-extensions ⚠️
+
 [![build](https://travis-ci.org/sourcegraph/browser-extensions.svg?branch=master)](https://travis-ci.org/sourcegraph/browser-extensions)
 [![dependencies](https://david-dm.org/sourcegraph/browser-extensions/status.svg)](https://david-dm.org/sourcegraph/browser-extensions)
 [![code style: prettier](https://img.shields.io/badge/code_style-prettier-ff69b4.svg)](https://github.com/prettier/prettier)
